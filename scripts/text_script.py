@@ -1,7 +1,8 @@
 from argparse import Namespace, ArgumentParser
+from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from numpy import ndarray, load
 import pandas as pd
 from sklearn.metrics import classification_report
@@ -13,16 +14,55 @@ from classif_utils import get_classifiers, timeit
 results = {}
 predictions = {}
 valid_embeddings = {
-    "text": [""],
-    "audio": [""],
+    "text": [
+        "fasttext",
+        "mfcc_full",
+        "mfcc_prosodic",
+        "mfcc_stats",
+        "word2vec",
+    ],
+    "audio": ["hubert_cls", "hubert_mean", "w2v2_cls", "w2v2_mean"],
 }
 
-def parse_args() -> Namespace:
+
+@dataclass
+class Args:
+    name: str
+    embedding: str
+    additional: Optional[str]
+    train_size: int
+    val_size: int
+    random_state: int
+    output_path: Path
+
+    def __post_init__(self):
+        self.embedding = self.embedding.lower()
+        type_embedding = Args.get_embedding_type(self.embedding)
+        self.output_path.mkdir(parents=True, exist_ok=True)
+        self.output_path = self.output_path / self.name
+        if not self.additional:
+            return
+        self.additional = self.additional.lower()
+        additional_type_embedding = Args.get_embedding_type(self.additional)
+        if type_embedding != additional_type_embedding:
+            raise ValueError(
+                "combining two kinds of embeddings is not supported"
+            )
+
+    @staticmethod
+    def get_embedding_type(embedding: str) -> str:
+        for k, v in valid_embeddings.items():
+            if embedding in v:
+                return k
+        raise ValueError("embedding not supported")
+
+
+def parse_args() -> Args:
     parser = ArgumentParser(
         description="Script that trains several models using the provided embeddings data as input and produces several results."
     )
     parser.add_argument(
-        "--name", "-n", type=str, required=True, help="Nombre del experimento"
+        "--name", "-n", type=str, required=True, help="Experiment name."
     )
     parser.add_argument(
         "--embedding",
@@ -32,7 +72,7 @@ def parse_args() -> Namespace:
         help='Name of the embedding to use. The embedding must be previously created in the "embeddings" folder, in ".npy" format for both the test and train sets, along with the data CSV files. The name format should be "test_<embedding>.npy."',
     )
     parser.add_argument(
-        "--adicional",
+        "--additional",
         "-a",
         type=str,
         required=False,
@@ -44,7 +84,7 @@ def parse_args() -> Namespace:
         type=int,
         default=5500,
         required=False,
-        help="Samples used for training.",
+        help="Samples used for training. Default: 5500.",
     )
     parser.add_argument(
         "--val_size",
@@ -52,7 +92,7 @@ def parse_args() -> Namespace:
         type=int,
         default=500,
         required=False,
-        help="Samples used for validation.",
+        help="Samples used for validation. Default: 500.",
     )
     parser.add_argument(
         "--random-state",
@@ -60,20 +100,26 @@ def parse_args() -> Namespace:
         type=int,
         default=420,
         required=False,
-        help="Random state for experiments reproducibility.",
+        help="Random state for experiments reproducibility. Default: 420.",
     )
     parser.add_argument(
         "--output",
         "-o",
         type=Path,
         required=False,
-        default=Path("results/text"),
-        help="Output directory for the results JSON files (created if it does not exist)",
+        default=Path("results"),
+        help="Output directory for the results JSON files (created if it does not exist). Default: ./results.",
     )
     args = parser.parse_args()
-    if not args.output.exists():
-        args.output.mkdir(parents=True, exist_ok=True)
-    return args
+    return Args(
+        name=args.name,
+        embedding=args.embedding,
+        additional=args.additional,
+        train_size=args.train_size,
+        val_size=args.val_size,
+        random_state=args.random_state,
+        output_path=args.output,
+    )
 
 
 def load_dfs(data_path: Path):
@@ -83,7 +129,7 @@ def load_dfs(data_path: Path):
 
 
 def get_splits_idx(
-    train_df: pd.DataFrame, args: Namespace
+    train_df: pd.DataFrame, args: Args
 ) -> tuple[ndarray, ndarray]:
     train_idx, val_idx = train_test_split(
         train_df.index.values,
@@ -92,7 +138,7 @@ def get_splits_idx(
         random_state=args.random_state,
         stratify=train_df["label"],
     )
-    return train_idx, val_idx
+    return train_idx, val_idx  # type: ignore
 
 
 def get_labels(
@@ -118,7 +164,7 @@ def load_embeddings(
         train_path, idx_train=train_idx, idx_val=val_idx
     )
     test = scaler.transform(load(test_path))
-    return train, val, test
+    return train, val, test  # type: ignore
 
 
 @timeit("MLP", results)
@@ -162,7 +208,7 @@ def train_classificators(
     X_val: ndarray,
     y_val: ndarray,
     X_test: ndarray,
-    args: Namespace,
+    args: Args,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     classifiers = get_classifiers(args.random_state)
     for name, model in classifiers.items():
@@ -188,28 +234,27 @@ def save_results(
     df_test: pd.DataFrame,
     results: dict[str, Any],
     predictions: dict[str, Any],
-    file: Path,
+    args: Args,
 ):
-    with open(file.with_suffix(".json"), "w") as f:
+    with open(args.output_path.with_suffix(".json"), "w") as f:
         json.dump(results, f)
     df = pd.DataFrame.from_dict(predictions, orient="index").transpose()
     df = df.map(lambda x: "satire" if x == 1 else "no-satire")
     df["id"] = df_test["uid"].str.removesuffix(".mp3")
-    df.to_csv(file.with_suffix(".csv"), index=False)
+    df.to_csv(args.output_path.with_suffix(".csv"), index=False)
 
 
 def main():
     args = parse_args()
     data_path = Path.cwd() / "data/public_data"
-    results_path = args.output / args.name.lower()
     embeddings = (
-        args.embedding + "+" + args.adicional
-        if args.adicional
+        args.embedding + "+" + args.additional
+        if args.additional
         else args.embedding
     )
     print(f"Experimento {args.name}, usando embedding {embeddings}.")
     print(f"{args.random_state = }")
-    print(f"Directorio de salida: {args.output}")
+    print(f"Directorio de salida: {args.output_path}")
     train_df, test_df = load_dfs(data_path)
     train_idx, val_idx = get_splits_idx(train_df, args)
     X_train, X_val, X_test = load_embeddings(
@@ -226,7 +271,7 @@ def main():
         test_df,
         keras_results | class_results,
         keras_preds | class_preds,
-        results_path,
+        args,
     )
 
 
