@@ -54,21 +54,21 @@ class Args:
     def __post_init__(self):
         self.text_embedding = self.text_embedding.lower()
         assert Args.get_embedding_type(self.text_embedding) == "text", (
-            "text embedding must be a text embedding"
+            f"text embedding {self.text_embedding} must be a text embedding"
         )
         if self.text_additional:
             self.text_additional = self.text_additional.lower()
             assert Args.get_embedding_type(self.text_additional) == "text", (
-                "text embedding must be a text embedding"
+                f"text embedding {self.text_additional} must be a text embedding"
             )
         self.audio_embedding = self.audio_embedding.lower()
         assert Args.get_embedding_type(self.audio_embedding) == "audio", (
-            "audio embedding must be an audio embedding"
+            f"audio embedding {self.audio_embedding} must be an audio embedding"
         )
         if self.audio_additional:
             self.audio_additional = self.audio_additional.lower()
             assert Args.get_embedding_type(self.audio_additional) == "audio", (
-                "audio embedding must be an audio embedding"
+                f"audio embedding {self.audio_additional} must be an audio embedding"
             )
         self.output_path.mkdir(parents=True, exist_ok=True)
         self.output_path = self.output_path / f"combi_{self.name}"
@@ -78,7 +78,7 @@ class Args:
         for k, v in valid_embeddings.items():
             if embedding in v:
                 return k
-        raise ValueError("embedding not supported")
+        raise ValueError(f"embedding {embedding} not supported")
 
 
 def fuse_embeddings(
