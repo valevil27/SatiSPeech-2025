@@ -8,8 +8,8 @@ import pandas as pd
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 from fusion_utils import fusion_concat, load_embeddings_npy
-import keras_utils
 from classif_utils import get_classifiers, timeit
+from keras_utils import build_model, get_tuner, early_stop
 
 results = {}
 predictions = {}
@@ -20,6 +20,7 @@ valid_embeddings = {
         "mfcc_prosodic",
         "mfcc_stats",
         "word2vec",
+        "roberta",
     ],
     "audio": ["hubert_cls", "hubert_mean", "w2v2_cls", "w2v2_mean"],
 }
@@ -192,12 +193,18 @@ def train_keras(
     random_state: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     print("\nTuning and fitting: MLP")
-    keras_builder = keras_utils.build_model(X_train, y_train)
-    tuner = keras_utils.get_tuner(keras_builder, name, random_state)
-    tuner.search(X_train, y_train, epochs=30, validation_split=0.2)
+    keras_builder = build_model(X_train, y_train)
+    tuner = get_tuner(keras_builder, name, random_state)
+    tuner.search(
+        X_train,
+        y_train,
+        epochs=30,
+        validation_split=0.2,
+        callbacks=[early_stop],
+    )
     best_hps = tuner.get_best_hyperparameters()[0]
     best_model = keras_builder(best_hps)
-    best_model.fit(X_train, y_train, epochs=50, validation_split=0.2)
+    best_model.fit(X_train, y_train, epochs=50, validation_split=0.2, callbacks=[early_stop])
     y_pred = best_model.predict(X_val)
     y_pred_classes = y_pred.argmax(axis=1)
     y_test = best_model.predict(X_test)
@@ -288,7 +295,7 @@ def main():
         test_df,
         keras_results | class_results,
         keras_preds | class_preds,
-        args.output_path
+        args.output_path,
     )
 
 

@@ -35,7 +35,7 @@ valid_embeddings = {
     ],
     "audio": ["hubert_cls", "hubert_mean", "w2v2_cls", "w2v2_mean"],
 }
-valid_methods = ["concat", "mean", "weighted", "attention"]
+valid_methods = ["concat", "mean", "weighted", "attention", "all"]
 
 
 @dataclass
@@ -45,7 +45,7 @@ class Args:
     text_additional: Optional[str]
     audio_embedding: str
     audio_additional: Optional[str]
-    method: str
+    methods: list[str]
     train_size: int
     val_size: int
     random_state: int
@@ -70,8 +70,10 @@ class Args:
             assert Args.get_embedding_type(self.audio_additional) == "audio", (
                 f"audio embedding {self.audio_additional} must be an audio embedding"
             )
+        if "all" in self.methods:
+            self.methods = [m for m in valid_methods if m != "all"]
         self.output_path.mkdir(parents=True, exist_ok=True)
-        self.output_path = self.output_path / f"combi_{self.name}"
+        self.output_path = self.output_path / f"{self.name}"
 
     @staticmethod
     def get_embedding_type(embedding: str) -> str:
@@ -154,12 +156,13 @@ def parse_args() -> Args:
         help="Name of the additional embedding to use along with the main one. The format is the same as for the main embedding. If not present, only the main embedding is used.",
     )
     parser.add_argument(
-        "--method",
+        "--methods",
         "-m",
-        choices=valid_methods,
         type=str,
-        default="concat",
-        help="Method used to combine text and audio embeddings. Allowed methods are concat, mean, weighted and attention. By default, uses concat",
+        nargs="*",
+        choices=valid_methods,
+        default=["concat"],
+        help="Method used to fuse text and audio embeddings. Allowed one or more methods from concat, mean, weighted, attention and all. By default, uses concat",
     )
     parser.add_argument(
         "--train-size",
@@ -200,7 +203,7 @@ def parse_args() -> Args:
         text_additional=args.text_additional,
         audio_embedding=args.audio_embedding,
         audio_additional=args.audio_additional,
-        method=args.method,
+        methods=args.methods,
         output_path=args.output,
         random_state=args.random_state,
         train_size=args.train_size,
@@ -221,8 +224,9 @@ def main():
         if args.audio_additional
         else args.audio_embedding
     )
+    print(f"Experimento {args.name}.")
     print(
-        f"Experimento {args.name}.\nUsando embeddings {text_embeddings} con {audio_embeddings} mediante {args.method}."
+        f"Usando embeddings {text_embeddings} con {audio_embeddings} mediante {args.methods}."
     )
     print(f"Random state = {args.random_state}")
     print(f"Directorio de salida: {args.output_path}")
@@ -241,29 +245,32 @@ def main():
         args.audio_additional,
     )
     y_train, y_val = get_labels(train_df, train_idx, val_idx)
-    X_train, X_val, X_test = fuse_embeddings(
-        X_train_text,
-        X_train_audio,
-        X_val_text,
-        X_val_audio,
-        X_test_text,
-        X_test_audio,
-        y_train,
-        y_val,
-        args.method,
-    )
-    keras_results, keras_preds = train_keras(
-        X_train, y_train, X_val, y_val, X_test, args.name, args.random_state
-    )
-    class_results, class_preds = train_classificators(
-        X_train, y_train, X_val, y_val, X_test, args.random_state
-    )
-    save_results(
-        test_df,
-        keras_results | class_results,
-        keras_preds | class_preds,
-        args.output_path,
-    )
+    for method in args.methods:
+        print("##### Current fusion method:", method)
+        X_train, X_val, X_test = fuse_embeddings(
+            X_train_text,
+            X_train_audio,
+            X_val_text,
+            X_val_audio,
+            X_test_text,
+            X_test_audio,
+            y_train,
+            y_val,
+            method,
+        )
+        keras_results, keras_preds = train_keras(
+            X_train, y_train, X_val, y_val, X_test, f"{args.name}_{method}", args.random_state
+        )
+        class_results, class_preds = train_classificators(
+            X_train, y_train, X_val, y_val, X_test, args.random_state
+        )
+        save_results(
+            test_df,
+            keras_results | class_results,
+            keras_preds | class_preds,
+            args.output_path.with_name(args.output_path.name + "_" + method),
+        )
+
 
 if __name__ == "__main__":
     main()

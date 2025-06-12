@@ -1,7 +1,7 @@
 from typing import Callable
 import numpy as np
 from tensorflow import keras  # type: ignore
-from keras import layers
+from keras import layers, callbacks
 from keras import Sequential
 import keras_tuner as kt
 from keras_tuner import HyperParameters
@@ -84,3 +84,9 @@ def get_tuner(
         directory="keras_tuner_dir",
         project_name=project_name,
     )
+
+early_stop = callbacks.EarlyStopping(
+    monitor="val_loss",
+    patience=5,
+    restore_best_weights=True
+)

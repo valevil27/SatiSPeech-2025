@@ -27,26 +27,37 @@ def fusion_concat(embedding_a, embedding_b):
     """
     return np.concatenate([embedding_a, embedding_b], axis=1)
 
+def normalize(embedding_a, embedding_b):
+    print("Normalizing embeddings...")
+    dim_a, dim_b = embedding_a.shape[1], embedding_b.shape[1]
+    if dim_a == dim_b:
+        return embedding_a, embedding_b
+    min_dim = min(dim_a, dim_b)
+    emb_a = embedding_a[:, :min_dim]
+    emb_b = embedding_b[:, :min_dim]
+    print(f"Embedding a: {emb_a.shape}")
+    print(f"Embedding b: {emb_b.shape}")
+    return emb_a, emb_b
+
 def fusion_mean(embedding_a, embedding_b):
     """
     Fusión por media entre dos embeddings del mismo tamaño.
     """
-    assert embedding_a.shape == embedding_b.shape, "Para calcular la media, los embeddings deben tener la misma forma."
-    return (embedding_a + embedding_b) / 2
+    emb_a, emb_b = normalize(embedding_a, embedding_b)
+    return (emb_a + emb_b) / 2
 
 def fusion_weighted(embedding_a, embedding_b, weight_a=0.5, weight_b=0.5):
     """
     Fusión ponderada entre dos embeddings del mismo tamaño.
     """
-    assert embedding_a.shape == embedding_b.shape, "Para combinar con pesos, los embeddings deben tener la misma forma."
+    embedding_a, embedding_b = normalize(embedding_a, embedding_b)
     return (weight_a * embedding_a) + (weight_b * embedding_b)
 
 def fusion_attention(embedding_a, embedding_b, num_heads=4):
     """
     Fusión mediante atención multi-cabeza entre dos embeddings.
     """
-    assert embedding_a.shape == embedding_b.shape, "Para atención, los embeddings deben tener la misma forma."
-
+    embedding_a, embedding_b = normalize(embedding_a, embedding_b)
     d_model = embedding_a.shape[1]
     key_dim = d_model // num_heads
 
@@ -71,7 +82,7 @@ def search_best_weighted_fusion(X_train_a, X_train_b, X_val_a, X_val_b, y_train,
     Búsqueda de la mejor combinación de pesos para la fusión ponderada.
     """
     if model is None:
-        model = LogisticRegression(max_iter=1000, random_state=420)
+        model = LogisticRegression(max_iter=1000, random_state=42)
 
     best_score = 0
     best_weights = (0.5, 0.5)
