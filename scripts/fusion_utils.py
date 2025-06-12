@@ -2,11 +2,9 @@
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import MultiHeadAttention, LayerNormalization
+from tensorflow.keras.layers import MultiHeadAttention # type: ignore
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
-from sklearn.ensemble import RandomForestClassifier
 
 # Loader de embeddings
 
@@ -73,7 +71,7 @@ def search_best_weighted_fusion(X_train_a, X_train_b, X_val_a, X_val_b, y_train,
     Búsqueda de la mejor combinación de pesos para la fusión ponderada.
     """
     if model is None:
-        model = LogisticRegression(max_iter=1000, random_state=42)
+        model = LogisticRegression(max_iter=1000, random_state=420)
 
     best_score = 0
     best_weights = (0.5, 0.5)

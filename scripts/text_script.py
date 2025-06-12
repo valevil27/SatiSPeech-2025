@@ -7,7 +7,7 @@ from numpy import ndarray, load
 import pandas as pd
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
-from fusion_utils import load_embeddings_npy
+from fusion_utils import fusion_concat, load_embeddings_npy
 import keras_utils
 from classif_utils import get_classifiers, timeit
 
@@ -39,7 +39,7 @@ class Args:
         self.embedding = self.embedding.lower()
         type_embedding = Args.get_embedding_type(self.embedding)
         self.output_path.mkdir(parents=True, exist_ok=True)
-        self.output_path = self.output_path / self.name
+        self.output_path = self.output_path / f"{type_embedding}_{self.name}"
         if not self.additional:
             return
         self.additional = self.additional.lower()
@@ -129,13 +129,13 @@ def load_dfs(data_path: Path):
 
 
 def get_splits_idx(
-    train_df: pd.DataFrame, args: Args
+    train_df: pd.DataFrame, train_size: int, val_size: int, random_state: int
 ) -> tuple[ndarray, ndarray]:
     train_idx, val_idx = train_test_split(
         train_df.index.values,
-        train_size=args.train_size,
-        test_size=args.val_size,
-        random_state=args.random_state,
+        train_size=train_size,
+        test_size=val_size,
+        random_state=random_state,
         stratify=train_df["label"],
     )
     return train_idx, val_idx  # type: ignore
@@ -156,14 +156,28 @@ def get_labels(
 
 
 def load_embeddings(
-    data_path: Path, embedding: str, train_idx: ndarray, val_idx: ndarray
+    data_path: Path,
+    train_idx: ndarray,
+    val_idx: ndarray,
+    embedding: str,
+    additional: Optional[str],
 ) -> tuple[ndarray, ndarray, ndarray]:
-    test_path = data_path / f"embeddings/test_{embedding.lower()}.npy"
-    train_path = data_path / f"embeddings/train_{embedding.lower()}.npy"
+    test_path = data_path / f"embeddings/test_{embedding}.npy"
+    train_path = data_path / f"embeddings/train_{embedding}.npy"
     train, val, scaler = load_embeddings_npy(
         train_path, idx_train=train_idx, idx_val=val_idx
     )
     test = scaler.transform(load(test_path))
+    if additional:
+        test_path = data_path / f"embeddings/test_{additional.lower()}.npy"
+        train_path = data_path / f"embeddings/train_{additional.lower()}.npy"
+        train_a, val_a, scaler_a = load_embeddings_npy(
+            train_path, idx_train=train_idx, idx_val=val_idx
+        )
+        test_a = scaler_a.transform(load(test_path))
+        train = fusion_concat(train, train_a)
+        val = fusion_concat(val, val_a)
+        test = fusion_concat(test, test_a)
     return train, val, test  # type: ignore
 
 
@@ -174,11 +188,12 @@ def train_keras(
     X_val: ndarray,
     y_val: ndarray,
     X_test: ndarray,
-    args: Namespace,
+    name: str,
+    random_state: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     print("\nTuning and fitting: MLP")
     keras_builder = keras_utils.build_model(X_train, y_train)
-    tuner = keras_utils.get_tuner(keras_builder, args.name, args.random_state)
+    tuner = keras_utils.get_tuner(keras_builder, name, random_state)
     tuner.search(X_train, y_train, epochs=30, validation_split=0.2)
     best_hps = tuner.get_best_hyperparameters()[0]
     best_model = keras_builder(best_hps)
@@ -208,9 +223,9 @@ def train_classificators(
     X_val: ndarray,
     y_val: ndarray,
     X_test: ndarray,
-    args: Args,
+    random_state: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    classifiers = get_classifiers(args.random_state)
+    classifiers = get_classifiers(random_state)
     for name, model in classifiers.items():
         timed_training = timeit(name, results)(train_classificator)
         timed_training(X_train, y_train, X_val, y_val, X_test, name, model)
@@ -234,14 +249,14 @@ def save_results(
     df_test: pd.DataFrame,
     results: dict[str, Any],
     predictions: dict[str, Any],
-    args: Args,
+    output: Path,
 ):
-    with open(args.output_path.with_suffix(".json"), "w") as f:
+    with open(output.with_suffix(".json"), "w") as f:
         json.dump(results, f)
     df = pd.DataFrame.from_dict(predictions, orient="index").transpose()
     df = df.map(lambda x: "satire" if x == 1 else "no-satire")
     df["id"] = df_test["uid"].str.removesuffix(".mp3")
-    df.to_csv(args.output_path.with_suffix(".csv"), index=False)
+    df.to_csv(output.with_suffix(".csv"), index=False)
 
 
 def main():
@@ -253,25 +268,27 @@ def main():
         else args.embedding
     )
     print(f"Experimento {args.name}, usando embedding {embeddings}.")
-    print(f"{args.random_state = }")
+    print(f"Random state: {args.random_state}")
     print(f"Directorio de salida: {args.output_path}")
     train_df, test_df = load_dfs(data_path)
-    train_idx, val_idx = get_splits_idx(train_df, args)
+    train_idx, val_idx = get_splits_idx(
+        train_df, args.train_size, args.val_size, args.random_state
+    )
     X_train, X_val, X_test = load_embeddings(
-        data_path, args.embedding, train_idx, val_idx
+        data_path, train_idx, val_idx, args.embedding, args.additional
     )
     y_train, y_val = get_labels(train_df, train_idx, val_idx)
     keras_results, keras_preds = train_keras(
         X_train, y_train, X_val, y_val, X_test, args
     )
     class_results, class_preds = train_classificators(
-        X_train, y_train, X_val, y_val, X_test, args
+        X_train, y_train, X_val, y_val, X_test, args.random_state
     )
     save_results(
         test_df,
         keras_results | class_results,
         keras_preds | class_preds,
-        args,
+        args.output_path
     )
 
 
