@@ -8,9 +8,11 @@ docs
 *.json
 *.zip
 *.npy
+*.pyo
 *.log
 *.csv
 *.png
+.uv
 keras*/
 cc.es.300.bin
 fasttext_es.kv
@@ -21,3 +23,5 @@ mejoras.md
 notas.md
 reunion.md
 .env
+scripts/.fusion_utils.py
+commands
