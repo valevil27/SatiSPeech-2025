@@ -1,0 +1,234 @@
+from argparse import Namespace, ArgumentParser
+import json
+from pathlib import Path
+from typing import Any
+from numpy import ndarray, load
+import pandas as pd
+from sklearn.metrics import classification_report
+from sklearn.model_selection import train_test_split
+from fusion_utils import load_embeddings_npy
+import keras_utils
+from classif_utils import get_classifiers, timeit
+
+results = {}
+predictions = {}
+valid_embeddings = {
+    "text": [""],
+    "audio": [""],
+}
+
+def parse_args() -> Namespace:
+    parser = ArgumentParser(
+        description="Script that trains several models using the provided embeddings data as input and produces several results."
+    )
+    parser.add_argument(
+        "--name", "-n", type=str, required=True, help="Nombre del experimento"
+    )
+    parser.add_argument(
+        "--embedding",
+        "-e",
+        type=str,
+        required=True,
+        help='Name of the embedding to use. The embedding must be previously created in the "embeddings" folder, in ".npy" format for both the test and train sets, along with the data CSV files. The name format should be "test_<embedding>.npy."',
+    )
+    parser.add_argument(
+        "--adicional",
+        "-a",
+        type=str,
+        required=False,
+        help="Name of the additional embedding to use along with the main one. The format is the same as for the main embedding. If not present, only the main embedding is used.",
+    )
+    parser.add_argument(
+        "--train-size",
+        "-t",
+        type=int,
+        default=5500,
+        required=False,
+        help="Samples used for training.",
+    )
+    parser.add_argument(
+        "--val_size",
+        "-v",
+        type=int,
+        default=500,
+        required=False,
+        help="Samples used for validation.",
+    )
+    parser.add_argument(
+        "--random-state",
+        "-r",
+        type=int,
+        default=420,
+        required=False,
+        help="Random state for experiments reproducibility.",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        required=False,
+        default=Path("results/text"),
+        help="Output directory for the results JSON files (created if it does not exist)",
+    )
+    args = parser.parse_args()
+    if not args.output.exists():
+        args.output.mkdir(parents=True, exist_ok=True)
+    return args
+
+
+def load_dfs(data_path: Path):
+    train_df = pd.read_csv(data_path / "SatiSPeech_phase_2_train_public.csv")
+    test_df = pd.read_csv(data_path / "SatiSPeech_phase_2_test_public.csv")
+    return train_df, test_df
+
+
+def get_splits_idx(
+    train_df: pd.DataFrame, args: Namespace
+) -> tuple[ndarray, ndarray]:
+    train_idx, val_idx = train_test_split(
+        train_df.index.values,
+        train_size=args.train_size,
+        test_size=args.val_size,
+        random_state=args.random_state,
+        stratify=train_df["label"],
+    )
+    return train_idx, val_idx
+
+
+def get_labels(
+    train_df: pd.DataFrame, train_idx: ndarray, val_idx: ndarray
+) -> tuple[ndarray, ndarray]:
+    y_train = (
+        train_df.loc[train_idx, "label"]
+        .map({"satire": 1, "no-satire": 0})
+        .values
+    )
+    y_val = (
+        train_df.loc[val_idx, "label"].map({"satire": 1, "no-satire": 0}).values
+    )
+    return y_train, y_val  # type: ignore
+
+
+def load_embeddings(
+    data_path: Path, embedding: str, train_idx: ndarray, val_idx: ndarray
+) -> tuple[ndarray, ndarray, ndarray]:
+    test_path = data_path / f"embeddings/test_{embedding.lower()}.npy"
+    train_path = data_path / f"embeddings/train_{embedding.lower()}.npy"
+    train, val, scaler = load_embeddings_npy(
+        train_path, idx_train=train_idx, idx_val=val_idx
+    )
+    test = scaler.transform(load(test_path))
+    return train, val, test
+
+
+@timeit("MLP", results)
+def train_keras(
+    X_train: ndarray,
+    y_train: ndarray,
+    X_val: ndarray,
+    y_val: ndarray,
+    X_test: ndarray,
+    args: Namespace,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    print("\nTuning and fitting: MLP")
+    keras_builder = keras_utils.build_model(X_train, y_train)
+    tuner = keras_utils.get_tuner(keras_builder, args.name, args.random_state)
+    tuner.search(X_train, y_train, epochs=30, validation_split=0.2)
+    best_hps = tuner.get_best_hyperparameters()[0]
+    best_model = keras_builder(best_hps)
+    best_model.fit(X_train, y_train, epochs=50, validation_split=0.2)
+    y_pred = best_model.predict(X_val)
+    y_pred_classes = y_pred.argmax(axis=1)
+    y_test = best_model.predict(X_test)
+    y_test_classes = y_test.argmax(axis=1)
+    report = classification_report(
+        y_val, y_pred_classes, digits=4, output_dict=True
+    )
+    assert isinstance(report, dict)
+    results["MLP"] = report
+    results["MLP"]["Hyperparameters"] = tuner.get_best_hyperparameters()[
+        0
+    ].values
+    print(
+        "#### Report for MLP:\n####",
+        results,
+    )
+    return results, {"MLP": y_test_classes}
+
+
+def train_classificators(
+    X_train: ndarray,
+    y_train: ndarray,
+    X_val: ndarray,
+    y_val: ndarray,
+    X_test: ndarray,
+    args: Namespace,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    classifiers = get_classifiers(args.random_state)
+    for name, model in classifiers.items():
+        timed_training = timeit(name, results)(train_classificator)
+        timed_training(X_train, y_train, X_val, y_val, X_test, name, model)
+    return results, predictions
+
+
+def train_classificator(X_train, y_train, X_val, y_val, X_test, name, model):
+    print(f"\nTuning and fitting: {name}")
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_val)
+    y_test = model.predict(X_test)
+    report = classification_report(y_val, y_pred, output_dict=True, digits=4)
+    assert isinstance(report, dict)
+    results[name] = report
+    predictions[name] = y_test
+    results[name]["Hyperparameters"] = model.best_params_
+    print(f"Report for {name}:\n", results[name])
+
+
+def save_results(
+    df_test: pd.DataFrame,
+    results: dict[str, Any],
+    predictions: dict[str, Any],
+    file: Path,
+):
+    with open(file.with_suffix(".json"), "w") as f:
+        json.dump(results, f)
+    df = pd.DataFrame.from_dict(predictions, orient="index").transpose()
+    df = df.map(lambda x: "satire" if x == 1 else "no-satire")
+    df["id"] = df_test["uid"].str.removesuffix(".mp3")
+    df.to_csv(file.with_suffix(".csv"), index=False)
+
+
+def main():
+    args = parse_args()
+    data_path = Path.cwd() / "data/public_data"
+    results_path = args.output / args.name.lower()
+    embeddings = (
+        args.embedding + "+" + args.adicional
+        if args.adicional
+        else args.embedding
+    )
+    print(f"Experimento {args.name}, usando embedding {embeddings}.")
+    print(f"{args.random_state = }")
+    print(f"Directorio de salida: {args.output}")
+    train_df, test_df = load_dfs(data_path)
+    train_idx, val_idx = get_splits_idx(train_df, args)
+    X_train, X_val, X_test = load_embeddings(
+        data_path, args.embedding, train_idx, val_idx
+    )
+    y_train, y_val = get_labels(train_df, train_idx, val_idx)
+    keras_results, keras_preds = train_keras(
+        X_train, y_train, X_val, y_val, X_test, args
+    )
+    class_results, class_preds = train_classificators(
+        X_train, y_train, X_val, y_val, X_test, args
+    )
+    save_results(
+        test_df,
+        keras_results | class_results,
+        keras_preds | class_preds,
+        results_path,
+    )
+
+
+if __name__ == "__main__":
+    main()

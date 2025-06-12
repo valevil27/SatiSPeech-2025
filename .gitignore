@@ -1,0 +1,16 @@
+TrabajoFinal
+WorkingNotes
+__pycache__
+combi_2/keras_tuner_dir
+logs
+data
+docs
+*.json
+*.zip
+*.npy
+*.log
+*.csv
+*.png
+keras*/
+cc.es.300.bin
+fasttext_es.kv
