@@ -31,6 +31,7 @@ valid_embeddings = {
         "mfcc_prosodic",
         "mfcc_stats",
         "word2vec",
+        "roberta",
     ],
     "audio": ["hubert_cls", "hubert_mean", "w2v2_cls", "w2v2_mean"],
 }
