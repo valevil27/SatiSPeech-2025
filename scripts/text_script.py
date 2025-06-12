@@ -1,4 +1,4 @@
-from argparse import Namespace, ArgumentParser
+from argparse import ArgumentParser
 from dataclasses import dataclass
 import json
 from pathlib import Path
