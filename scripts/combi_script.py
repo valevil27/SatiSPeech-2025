@@ -52,6 +52,9 @@ class Args:
     output_path: Path
 
     def __post_init__(self):
+        """
+        Lowercases embedding names, creates a name for the project if none was given and creates output directory if needed.
+        """
         self.text_embedding = self.text_embedding.lower()
         assert Args.get_embedding_type(self.text_embedding) == "text", (
             f"text embedding {self.text_embedding} must be a text embedding"
@@ -73,7 +76,6 @@ class Args:
         if "all" in self.methods:
             self.methods = [m for m in valid_methods if m != "all"]
         self.output_path.mkdir(parents=True, exist_ok=True)
-        self.output_path = self.output_path / f"{self.name}"
         if not self.name:
             self.name = self.text_embedding
             if self.text_additional:
@@ -81,6 +83,7 @@ class Args:
             self.name += "+" + self.text_embedding
             if self.audio_additional:
                 self.name += "_" + self.audio_additional
+        self.output_path = self.output_path / f"{self.name}"
 
     @staticmethod
     def get_embedding_type(embedding: str) -> str:
@@ -200,7 +203,7 @@ def parse_args() -> Args:
         "-o",
         type=Path,
         required=False,
-        default=Path("results"),
+        default=Path("results/combi"),
         help="Output directory for the results JSON files (created if it does not exist). Default: ./results.",
     )
     args = parser.parse_args()

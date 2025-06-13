@@ -28,7 +28,7 @@ valid_embeddings = {
 
 @dataclass
 class Args:
-    name: str
+    name: Optional[str]
     embedding: str
     additional: Optional[str]
     train_size: int
@@ -37,10 +37,16 @@ class Args:
     output_path: Path
 
     def __post_init__(self):
+        """
+        Sets embeddings names to lowercase, creates output directory with subdirectory by kind of embedding used
+        and sets the name if none was given.
+
+        Raises a ValueError if you try to combine two embeddings of different type.
+        """
         self.embedding = self.embedding.lower()
         type_embedding = Args.get_embedding_type(self.embedding)
+        self.output_path = self.output_path / type_embedding
         self.output_path.mkdir(parents=True, exist_ok=True)
-        self.output_path = self.output_path / f"{type_embedding}_{self.name}"
         if not self.additional:
             return
         self.additional = self.additional.lower()
@@ -49,6 +55,11 @@ class Args:
             raise ValueError(
                 "combining two kinds of embeddings is not supported"
             )
+        if not self.name:
+            self.name = self.embedding
+            if self.additional:
+                self.name += "_" + self.additional
+        self.output_path = self.output_path / self.name
 
     @staticmethod
     def get_embedding_type(embedding: str) -> str:
@@ -63,7 +74,7 @@ def parse_args() -> Args:
         description="Script that trains several models using the provided embeddings data as input and produces several results."
     )
     parser.add_argument(
-        "--name", "-n", type=str, required=True, help="Experiment name."
+        "--name", "-n", type=str, required=False, help="Experiment name. If none, one based on the experiment is given."
     )
     parser.add_argument(
         "--embedding",
