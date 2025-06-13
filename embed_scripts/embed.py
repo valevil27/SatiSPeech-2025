@@ -4,7 +4,9 @@ from pathlib import Path
 
 from enum import StrEnum, auto
 
+import trans_fasttext
 import trans_mfccs
+import trans_word2vec
 
 TRAIN_NAME = "SatiSPeech_phase_2_train_public.csv"
 TEST_NAME = "SatiSPeech_phase_2_test_public.csv"
@@ -63,11 +65,13 @@ def parse_args():
 
 def main():
     a = parse_args()
+    train_path = a.data_dir / TRAIN_NAME
+    test_path = a.data_dir / TEST_NAME
     match a.embedding:
         case Embedding.MFCC:
             trans_mfccs.process_split(
-                csv_path=a.data_dir / TRAIN_NAME,
-                audio_dir= a.data_dir / "segments_train",
+                csv_path=train_path,
+                audio_dir=a.data_dir / "segments_train",
                 id_column="id",
                 output_paths=[
                     a.output_dir / "train_mfcc_stats.npy",
@@ -77,8 +81,8 @@ def main():
                 errors_path=a.logs_dir / "train_mfcc.json",
             )
             trans_mfccs.process_split(
-                csv_path=a.data_dir / TEST_NAME,
-                audio_dir= a.data_dir / "segments_test",
+                csv_path=test_path,
+                audio_dir=a.data_dir / "segments_test",
                 id_column="uid",
                 output_paths=[
                     a.output_dir / "test_mfcc_stats.npy",
@@ -87,7 +91,18 @@ def main():
                 ],
                 errors_path=a.logs_dir / "test_mfcc.json",
             )
-
+        case Embedding.FASTTEXT:
+            trans_fasttext.procesar_embeddings(
+                csv_path=train_path,
+                output_path=a.output_dir / "train_fasttext.npy",
+            )
+            trans_fasttext.procesar_embeddings(
+                csv_path=train_path,
+                output_path=a.output_dir / "test_fasttext.npy",
+            )
+        case Embedding.WORD2VEC:
+            trans_word2vec
+            
 
 
 if __name__ == "__main__":
