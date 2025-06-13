@@ -40,7 +40,7 @@ valid_methods = ["concat", "mean", "weighted", "attention", "all"]
 
 @dataclass
 class Args:
-    name: str
+    name: Optional[str]
     text_embedding: str
     text_additional: Optional[str]
     audio_embedding: str
@@ -74,6 +74,13 @@ class Args:
             self.methods = [m for m in valid_methods if m != "all"]
         self.output_path.mkdir(parents=True, exist_ok=True)
         self.output_path = self.output_path / f"{self.name}"
+        if not self.name:
+            self.name = self.text_embedding
+            if self.text_additional:
+                self.name += "_" + self.text_additional
+            self.name += "+" + self.text_embedding
+            if self.audio_additional:
+                self.name += "_" + self.audio_additional
 
     @staticmethod
     def get_embedding_type(embedding: str) -> str:
@@ -125,7 +132,7 @@ def parse_args() -> Args:
         description="Script that trains several models using the provided embeddings data as input and produces several results."
     )
     parser.add_argument(
-        "--name", "-n", type=str, required=True, help="Experiment name."
+        "--name", "-n", type=str, required=False, help="Experiment name. By default uses a combination of the embeddings used in the experiment."
     )
     parser.add_argument(
         "--text-embedding",
