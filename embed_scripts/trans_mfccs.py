@@ -95,11 +95,11 @@ def extract_full_features(y, sr=16000, n_mfcc=13):
 
 
 def process_split(
-    csv_path: os.PathLike,
-    audio_dir: os.PathLike,
+    csv_path: Path,
+    audio_dir: Path,
     id_column: str,
-    output_paths: list[os.PathLike],
-    errors_path: os.PathLike,
+    output_paths: list[Path],
+    errors_path: Path,
     split_name: str = "Split",
 ):
     df = pd.read_csv(csv_path)

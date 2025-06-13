@@ -66,8 +66,28 @@ def main():
     match a.embedding:
         case Embedding.MFCC:
             trans_mfccs.process_split(
-                a.data_dir / TRAIN_NAME,
+                csv_path=a.data_dir / TRAIN_NAME,
+                audio_dir= a.data_dir / "segments_train",
+                id_column="id",
+                output_paths=[
+                    a.output_dir / "train_mfcc_stats.npy",
+                    a.output_dir / "train_mfcc_prosodic.npy",
+                    a.output_dir / "train_mfcc_full.npy",
+                ],
+                errors_path=a.logs_dir / "train_mfcc.json",
             )
+            trans_mfccs.process_split(
+                csv_path=a.data_dir / TEST_NAME,
+                audio_dir= a.data_dir / "segments_test",
+                id_column="uid",
+                output_paths=[
+                    a.output_dir / "test_mfcc_stats.npy",
+                    a.output_dir / "test_mfcc_prosodic.npy",
+                    a.output_dir / "test_mfcc_full.npy",
+                ],
+                errors_path=a.logs_dir / "test_mfcc.json",
+            )
+
 
 
 if __name__ == "__main__":
