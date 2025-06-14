@@ -9,40 +9,14 @@ from tqdm import tqdm
 
 # ================== CONFIGURACION ====================
 
-# Paths de los datos
-DATA_DIR = Path("./data/public_data")
-SEGMENTS_TRAIN_DIR = DATA_DIR / "segments_train"
-SEGMENTS_TEST_DIR = DATA_DIR / "segments_test"
-CSV_TRAIN = DATA_DIR / "SatiSPeech_phase_2_train_public.csv"
-CSV_TEST = DATA_DIR / "SatiSPeech_phase_2_test_public.csv"
-
-# Paths de salida
-OUTPUT_DIR = DATA_DIR / "mfcc_embeddings"
-OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
-
-TRAIN_MFCC_STATS = OUTPUT_DIR / "train_mfcc_stats.npy"
-TRAIN_MFCC_PROSODIC = OUTPUT_DIR / "train_mfcc_prosodic.npy"
-TRAIN_MFCC_FULL = OUTPUT_DIR / "train_mfcc_full.npy"
-
-TEST_MFCC_STATS = OUTPUT_DIR / "test_mfcc_stats.npy"
-TEST_MFCC_PROSODIC = OUTPUT_DIR / "test_mfcc_prosodic.npy"
-TEST_MFCC_FULL = OUTPUT_DIR / "test_mfcc_full.npy"
-
-ERRORS_TRAIN = OUTPUT_DIR / "errores_train.json"
-ERRORS_TEST = OUTPUT_DIR / "errores_test.json"
-
 # Sampling rate objetivo
 TARGET_SAMPLING_RATE = 16000
-
 # MFCC parametros
 N_MFCC = 13
-
 # Cada cuántos audios imprimir estado
 PRINT_EVERY = 100
 
 # =======================================================
-
-# Funciones auxiliares
 
 
 def load_audio(path, target_sr=16000):
@@ -94,7 +68,7 @@ def extract_full_features(y, sr=16000, n_mfcc=13):
     return features
 
 
-def process_split(
+def process_embeddings(
     csv_path: Path,
     audio_dir: Path,
     id_column: str,
@@ -156,28 +130,3 @@ def process_split(
     elapsed_time = end_time - start_time
     print(f"[{split_name}] Tiempo total: {elapsed_time / 60:.2f} minutos")
 
-
-# =============== PROCESAMIENTO PRINCIPAL ================
-
-if __name__ == "__main__":
-    print("Procesando TRAIN...")
-    process_split(
-        CSV_TRAIN,
-        SEGMENTS_TRAIN_DIR,
-        "id",
-        [TRAIN_MFCC_STATS, TRAIN_MFCC_PROSODIC, TRAIN_MFCC_FULL],
-        ERRORS_TRAIN,
-        split_name="Train",
-    )
-
-    print("Procesando TEST...")
-    process_split(
-        CSV_TEST,
-        SEGMENTS_TEST_DIR,
-        "uid",
-        [TEST_MFCC_STATS, TEST_MFCC_PROSODIC, TEST_MFCC_FULL],
-        ERRORS_TEST,
-        split_name="Test",
-    )
-
-    print("\n✅ Proceso completado.")

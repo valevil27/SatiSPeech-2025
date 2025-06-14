@@ -25,14 +25,4 @@ reunion.md
 .env
 scripts/.fusion_utils.py
 commands
-trans_audio_npy.py
-trans_audio_npy_ref.py
-trans_fasttext_embeddings.py
-trans_mfccs.py
-trans_mfccs_ref.py
-trans_roberta.py
-trans_word2vec_embeddings.py
-vec_utils.py
-verify_fasttext_embeddings.py
-verify_roberta.py
-verify_word2vec_embeddings.py
+og_trans
