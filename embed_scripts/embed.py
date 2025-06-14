@@ -1,12 +1,7 @@
 from argparse import ArgumentParser
 from dataclasses import dataclass
-from pathlib import Path
-
 from enum import StrEnum, auto
-
-import trans_fasttext
-import trans_mfccs
-import trans_word2vec
+from pathlib import Path
 
 TRAIN_NAME = "SatiSPeech_phase_2_train_public.csv"
 TEST_NAME = "SatiSPeech_phase_2_test_public.csv"
@@ -14,14 +9,12 @@ SAMPLING_RATE = 16_000
 
 
 class Embedding(StrEnum):
-    MFCC = auto()
     FASTTEXT = auto()
     WORD2VEC = auto()
     ROBERTA = auto()
-    HUBERT_CLS = auto()
-    HUBERT_MEAN = auto()
-    W2V2_CLS = auto()
-    W2V2_MEAN = auto()
+    MFCC = auto()
+    HUBERT = auto()
+    W2V2 = auto()
 
 
 @dataclass
@@ -45,13 +38,9 @@ def parse_args():
         type=Embedding,
         required=True,
     )
-    parser.add_argument(
-        "-d", "--data-dir", type=Path, default="data/public_data"
-    )
+    parser.add_argument("-d", "--data-dir", type=Path, default="data/public_data")
     parser.add_argument("-l", "--logs-dir", type=Path, default="logs")
-    parser.add_argument(
-        "-o", "--output-dir", type=Path, default="data/embeddings"
-    )
+    parser.add_argument("-o", "--output-dir", type=Path, default="data/embeddings")
     parser.add_argument("-f", "--print-state-frequency", type=int, default=100)
     args = parser.parse_args()
     return Args(
@@ -67,42 +56,118 @@ def main():
     a = parse_args()
     train_path = a.data_dir / TRAIN_NAME
     test_path = a.data_dir / TEST_NAME
+    out_train_path = a.output_dir / f"train_{a.embedding.value}.npy"
+    out_test_path = a.output_dir / f"test_{a.embedding.value}.npy"
+
     match a.embedding:
+        case Embedding.FASTTEXT:
+            import trans_fasttext
+
+            trans_fasttext.process_embeddings(
+                csv_path=train_path,
+                output_path=out_train_path,
+                split_name="Train",
+            )
+            trans_fasttext.process_embeddings(
+                csv_path=test_path,
+                output_path=out_test_path,
+                split_name="Test",
+            )
+        case Embedding.WORD2VEC:
+            import trans_word2vec
+
+            trans_word2vec.process_embeddings(
+                csv_path=train_path,
+                output_path=out_train_path,
+                split_name="Train",
+            )
+            trans_word2vec.process_embeddings(
+                csv_path=test_path,
+                output_path=out_test_path,
+                split_name="Test",
+            )
+        case Embedding.ROBERTA:
+            import trans_roberta
+
+            trans_roberta.process_embeddings(
+                csv_path=train_path,
+                output_path=out_train_path,
+                split_name="Train",
+            )
+            trans_roberta.process_embeddings(
+                csv_path=test_path,
+                output_path=out_test_path,
+                split_name="Test",
+            )
         case Embedding.MFCC:
-            trans_mfccs.process_split(
+            train_paths = [
+                a.output_dir / f"train_mfcc_{k}.npy"
+                for k in ["stats", "prosodic", "full"]
+            ]
+            test_paths = [
+                a.output_dir / f"test_mfcc_{k}.npy"
+                for k in ["stats", "prosodic", "full"]
+            ]
+            import trans_mfccs
+
+            trans_mfccs.process_embeddings(
                 csv_path=train_path,
                 audio_dir=a.data_dir / "segments_train",
                 id_column="id",
-                output_paths=[
-                    a.output_dir / "train_mfcc_stats.npy",
-                    a.output_dir / "train_mfcc_prosodic.npy",
-                    a.output_dir / "train_mfcc_full.npy",
-                ],
+                output_paths=train_paths,
                 errors_path=a.logs_dir / "train_mfcc.json",
+                split_name="Train",
             )
-            trans_mfccs.process_split(
+            trans_mfccs.process_embeddings(
                 csv_path=test_path,
                 audio_dir=a.data_dir / "segments_test",
                 id_column="uid",
-                output_paths=[
-                    a.output_dir / "test_mfcc_stats.npy",
-                    a.output_dir / "test_mfcc_prosodic.npy",
-                    a.output_dir / "test_mfcc_full.npy",
-                ],
+                output_paths=test_paths,
                 errors_path=a.logs_dir / "test_mfcc.json",
+                split_name="Test",
             )
-        case Embedding.FASTTEXT:
-            trans_fasttext.procesar_embeddings(
+        case Embedding.HUBERT:
+            import trans_hubert
+
+            trans_hubert.process_embeddings(
                 csv_path=train_path,
-                output_path=a.output_dir / "train_fasttext.npy",
+                audio_dir=a.data_dir / "segments_train",
+                id_column="id",
+                output_cls=a.output_dir / "train_hubert_cls.npy",
+                output_mean=a.output_dir / "train_hubert_mean.npy",
+                errors_path=a.logs_dir / "train_hubert.json",
+                split_name="Train",
             )
-            trans_fasttext.procesar_embeddings(
+            trans_hubert.process_embeddings(
+                csv_path=test_path,
+                audio_dir=a.data_dir / "segments_test",
+                id_column="uid",
+                output_cls=a.output_dir / "test_hubert_cls.npy",
+                output_mean=a.output_dir / "test_hubert_mean.npy",
+                errors_path=a.logs_dir / "test_hubert.json",
+                split_name="Test",
+            )
+        case Embedding.W2V2:
+            import trans_wav2vec2
+
+            trans_wav2vec2.process_embeddings(
                 csv_path=train_path,
-                output_path=a.output_dir / "test_fasttext.npy",
+                audio_dir=a.data_dir / "segments_train",
+                id_column="id",
+                output_cls=a.output_dir / "train_wav2vec2_cls.npy",
+                output_mean=a.output_dir / "train_wav2vec2_mean.npy",
+                errors_path=a.logs_dir / "train_wav2vec2.json",
+                split_name="Train",
             )
-        case Embedding.WORD2VEC:
-            trans_word2vec
-            
+            trans_wav2vec2.process_embeddings(
+                csv_path=test_path,
+                audio_dir=a.data_dir / "segments_test",
+                id_column="uid",
+                output_cls=a.output_dir / "test_wav2vec2_cls.npy",
+                output_mean=a.output_dir / "test_wav2vec2_mean.npy",
+                errors_path=a.logs_dir / "test_wav2vec2.json",
+                split_name="Test",
+            )
 
 
 if __name__ == "__main__":
