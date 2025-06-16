@@ -11,6 +11,8 @@ docs
 *.pyo
 *.log
 *.csv
+*.org
+*.org_archive
 *.png
 .uv
 keras*/
