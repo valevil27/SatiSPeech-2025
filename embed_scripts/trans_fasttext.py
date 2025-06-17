@@ -10,20 +10,20 @@ from vec_utils import load_fasttext_model, text_to_vec_fasttext
 
 nltk.download("stopwords")
 stop_words = set(stopwords.words("spanish"))
-FASTTEXT_MODEL_PATH = "./cc.es.300.bin"
+FASTTEXT_MODEL_PATH = Path("./embedding_files/cc.es.300.bin")
 
 # =====================================================
 
 
-def limpiar_texto(texto):
-    texto = str(texto).lower()
-    texto = re.sub(r"http\\S+|www\\S+|https\\S+", "", texto)
-    texto = re.sub(r"\\@\\w+|\\#", "", texto)
-    texto = re.sub(r"[^\w\s]", "", texto)
-    texto = re.sub(r"\\s+", " ", texto).strip()
-    palabras = texto.split()
-    palabras = [p for p in palabras if p not in stop_words]
-    return " ".join(palabras)
+def clean_text(text):
+    text = str(text).lower()
+    text = re.sub(r"http\\S+|www\\S+|https\\S+", "", text)
+    text = re.sub(r"\\@\\w+|\\#", "", text)
+    text = re.sub(r"[^\w\s]", "", text)
+    text = re.sub(r"\\s+", " ", text).strip()
+    words = text.split()
+    words = [p for p in words if p not in stop_words]
+    return " ".join(words)
 
 
 def process_embeddings(
@@ -31,7 +31,7 @@ def process_embeddings(
 ):
     print(f"[{split_name}] Procesando {csv_path}...")
     df = pd.read_csv(csv_path)
-    df["texto_limpio"] = df["transcription"].apply(limpiar_texto)
+    df["texto_limpio"] = df["transcription"].apply(clean_text)
 
     modelo_fasttext = load_fasttext_model(FASTTEXT_MODEL_PATH)
 

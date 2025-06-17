@@ -24,3 +24,28 @@ Classification reports for the models are generated during the training process
 and stored in `.json` files inside the `results` folder. These files are meant
 to be used for evaluation and analysis. Predictions are made using the trained
 models and the predictions are saved in `.csv`.
+
+## Instalation
+
+The project contains a `requirements.txt` file with the required packages. To
+install the required packages, run the following command:
+
+```bash
+pip install -r requirements.txt
+```
+
+It also contains a `pyproject.toml` file with the project configuration in order to
+use a package manager such as `poetry` or `uv`.
+
+### Files Required for Embedding Generation
+
+Files needed for embedding generation are stored in the `embedding_files` folder.
+
+FastText:
+
+- `cc.es.300.bin`: FastText model file.
+
+Word2Vec (conversion to `.npy` vectors was needed due to the limitation of the system):
+
+- `word2vec_vectors.npy`: Word2Vec vectors file.
+- `word2vec_vocab.npy`: Word2Vec vocabulary file.
