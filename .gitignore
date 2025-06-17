@@ -31,3 +31,5 @@ og_trans
 train_scripts/.fusion_utils.py
 main.ipynb
 best_combi.ipynb
+SatiSPeech2025Baseline.ipynb
+SatiSPeech2025Submission.ipynb
