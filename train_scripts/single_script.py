@@ -87,6 +87,7 @@ def parse_args() -> Args:
         "--embedding",
         "-e",
         type=Embedding,
+        choices=Embedding,
         required=True,
         help='Name of the embedding to use. The embedding must be previously created in the "embeddings" folder, in ".npy" format for both the test and train sets, along with the data CSV files. The name format should be "test_<embedding>.npy."',
     )
@@ -94,6 +95,7 @@ def parse_args() -> Args:
         "--additional",
         "-a",
         type=Embedding,
+        choices=Embedding,
         required=False,
         help="Name of the additional embedding to use along with the main one. The format is the same as for the main embedding. If not present, only the main embedding is used.",
     )

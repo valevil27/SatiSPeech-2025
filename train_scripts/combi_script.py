@@ -1,5 +1,7 @@
+from __future__ import annotations
 from argparse import ArgumentParser
 from dataclasses import dataclass
+from enum import StrEnum, auto
 from functools import partial
 from pathlib import Path
 from typing import Callable, Optional
@@ -20,32 +22,33 @@ from single_script import (
     save_results,
     train_classificators,
     train_keras,
+    Embedding,
 )
 
 results = {}
 predictions = {}
-valid_embeddings = {
-    "text": [
-        "fasttext",
-        "mfcc_full",
-        "mfcc_prosodic",
-        "mfcc_stats",
-        "word2vec",
-        "roberta",
-    ],
-    "audio": ["hubert_cls", "hubert_mean", "w2v2_cls", "w2v2_mean"],
-}
-valid_methods = ["concat", "mean", "weighted", "attention", "all"]
+
+
+class Method(StrEnum):
+    CONCAT = auto()
+    MEAN = auto()
+    WEIGHTED = auto()
+    ATTENTION = auto()
+    ALL = auto()
+
+    @staticmethod
+    def valid_methods() -> list[Method]:
+        return [m for m in Method if m != Method.ALL]
 
 
 @dataclass
 class Args:
     name: Optional[str]
-    text_embedding: str
-    text_additional: Optional[str]
-    audio_embedding: str
-    audio_additional: Optional[str]
-    methods: list[str]
+    text_embedding: Embedding
+    text_additional: Optional[Embedding]
+    audio_embedding: Embedding
+    audio_additional: Optional[Embedding]
+    methods: list[Method]
     train_size: int
     val_size: int
     random_state: int
@@ -55,42 +58,31 @@ class Args:
         """
         Lowercases embedding names, creates a name for the project if none was given and creates output directory if needed.
         """
-        self.text_embedding = self.text_embedding.lower()
-        assert Args.get_embedding_type(self.text_embedding) == "text", (
+        assert self.text_embedding.type() == "text", (
             f"text embedding {self.text_embedding} must be a text embedding"
         )
         if self.text_additional:
-            self.text_additional = self.text_additional.lower()
-            assert Args.get_embedding_type(self.text_additional) == "text", (
+            assert self.text_additional.type() == "text", (
                 f"text embedding {self.text_additional} must be a text embedding"
             )
-        self.audio_embedding = self.audio_embedding.lower()
-        assert Args.get_embedding_type(self.audio_embedding) == "audio", (
+        assert self.audio_embedding.type() == "audio", (
             f"audio embedding {self.audio_embedding} must be an audio embedding"
         )
         if self.audio_additional:
-            self.audio_additional = self.audio_additional.lower()
-            assert Args.get_embedding_type(self.audio_additional) == "audio", (
+            assert self.audio_additional.type() == "audio", (
                 f"audio embedding {self.audio_additional} must be an audio embedding"
             )
-        if "all" in self.methods:
-            self.methods = [m for m in valid_methods if m != "all"]
+        if Method.ALL in self.methods:
+            self.methods = Method.valid_methods()
         self.output_path.mkdir(parents=True, exist_ok=True)
         if not self.name:
-            self.name = self.text_embedding
+            self.name = self.text_embedding.value
             if self.text_additional:
-                self.name += "_" + self.text_additional
-            self.name += "+" + self.text_embedding
+                self.name += "_" + self.text_additional.value
+            self.name += "+" + self.audio_embedding.value
             if self.audio_additional:
-                self.name += "_" + self.audio_additional
+                self.name += "_" + self.audio_additional.value
         self.output_path = self.output_path / f"{self.name}"
-
-    @staticmethod
-    def get_embedding_type(embedding: str) -> str:
-        for k, v in valid_embeddings.items():
-            if embedding in v:
-                return k
-        raise ValueError(f"embedding {embedding} not supported")
 
 
 def fuse_embeddings(
@@ -106,11 +98,11 @@ def fuse_embeddings(
 ) -> tuple[ndarray, ndarray, ndarray]:
     f: Callable
     match method:
-        case "concat":
+        case Method.CONCAT:
             f = fusion_concat
-        case "mean":
+        case Method.MEAN:
             f = fusion_mean
-        case "weighted":
+        case Method.WEIGHTED:
             [w_a, w_b], _ = search_best_weighted_fusion(
                 X_train_text,
                 X_train_audio,
@@ -120,7 +112,7 @@ def fuse_embeddings(
                 y_val,
             )
             f = partial(fusion_weighted, weight_a=w_a, weight_b=w_b)
-        case "attention":
+        case Method.ATTENTION:
             f = fusion_attention
         case _:
             raise ValueError("fusion method not valid")
@@ -135,42 +127,50 @@ def parse_args() -> Args:
         description="Script that trains several models using the provided embeddings data as input and produces several results."
     )
     parser.add_argument(
-        "--name", "-n", type=str, required=False, help="Experiment name. By default uses a combination of the embeddings used in the experiment."
+        "--name",
+        "-n",
+        type=str,
+        required=False,
+        help="Experiment name. By default uses a combination of the embeddings used in the experiment.",
     )
     parser.add_argument(
         "--text-embedding",
         "-te",
-        type=str,
+        type=Embedding,
+        choices=[e for e in Embedding if e.type() == "text"],
         required=True,
         help='Name of the embedding to use. The embedding must be previously created in the "embeddings" folder, in ".npy" format for both the test and train sets, along with the data CSV files. The name format should be "test_<embedding>.npy."',
     )
     parser.add_argument(
         "--text-additional",
         "-ta",
-        type=str,
+        type=Embedding,
+        choices=[e for e in Embedding if e.type() == "text"],
         required=False,
         help="Name of the additional embedding to use along with the main one. The format is the same as for the main embedding. If not present, only the main embedding is used.",
     )
     parser.add_argument(
         "--audio-embedding",
         "-ae",
-        type=str,
+        type=Embedding,
+        choices=[e for e in Embedding if e.type() == "audio"],
         required=True,
         help='Name of the embedding to use. The embedding must be previously created in the "embeddings" folder, in ".npy" format for both the test and train sets, along with the data CSV files. The name format should be "test_<embedding>.npy."',
     )
     parser.add_argument(
         "--audio-additional",
         "-aa",
-        type=str,
+        type=Embedding,
+        choices=[e for e in Embedding if e.type() == "audio"],
         required=False,
         help="Name of the additional embedding to use along with the main one. The format is the same as for the main embedding. If not present, only the main embedding is used.",
     )
     parser.add_argument(
         "--methods",
         "-m",
-        type=str,
+        type=Method,
         nargs="*",
-        choices=valid_methods,
+        choices=Method,
         default=["concat"],
         help="Method used to fuse text and audio embeddings. Allowed one or more methods from concat, mean, weighted, attention and all. By default, uses concat",
     )
@@ -234,9 +234,9 @@ def main():
         if args.audio_additional
         else args.audio_embedding
     )
-    print(f"Experimento {args.name}.")
+    print(f"Experiment {args.name}.")
     print(
-        f"Usando embeddings {text_embeddings} con {audio_embeddings} mediante {args.methods}."
+        f"Using embeddings {text_embeddings} with {audio_embeddings} using fusion method {', '.join([m.value for m in args.methods])}."
     )
     print(f"Random state = {args.random_state}")
     print(f"Directorio de salida: {args.output_path}")
@@ -269,7 +269,13 @@ def main():
             method,
         )
         keras_results, keras_preds = train_keras(
-            X_train, y_train, X_val, y_val, X_test, f"{args.name}_{method}", args.random_state
+            X_train,
+            y_train,
+            X_val,
+            y_val,
+            X_test,
+            f"{args.name}_{method.value}",
+            args.random_state,
         )
         class_results, class_preds = train_classificators(
             X_train, y_train, X_val, y_val, X_test, args.random_state
@@ -278,7 +284,9 @@ def main():
             test_df,
             keras_results | class_results,
             keras_preds | class_preds,
-            args.output_path.with_name(args.output_path.name + "_" + method),
+            args.output_path.with_name(
+                args.output_path.name + "_" + method.value
+            ),
         )
 
 
