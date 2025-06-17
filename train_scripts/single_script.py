@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 from dataclasses import dataclass
+from enum import StrEnum, auto
 import json
 from pathlib import Path
 from typing import Any, Optional
@@ -13,6 +14,23 @@ from keras_utils import build_model, get_tuner, early_stop
 
 results = {}
 predictions = {}
+class Embedding(StrEnum):
+    FASTTEXT = auto()
+    MFCC_FULL = auto()
+    MFCC_PROSODIC = auto()
+    MFCC_STATS = auto()
+    WORD2VEC = auto()
+    ROBERTA = auto()
+    HUBERT_CLS = auto()
+    HUBERT_MEAN = auto()
+    W2V2_CLS = auto()
+    W2V2_MEAN = auto()
+    
+    def type(self) -> str:
+        if self in [Embedding.HUBERT_CLS, Embedding.HUBERT_MEAN, Embedding.W2V2_CLS, Embedding.W2V2_MEAN]:
+            return "audio"
+        return "text"
+    
 valid_embeddings = {
     "text": [
         "fasttext",
@@ -29,8 +47,8 @@ valid_embeddings = {
 @dataclass
 class Args:
     name: Optional[str]
-    embedding: str
-    additional: Optional[str]
+    embedding: Embedding
+    additional: Optional[Embedding]
     train_size: int
     val_size: int
     random_state: int
@@ -43,22 +61,18 @@ class Args:
 
         Raises a ValueError if you try to combine two embeddings of different type.
         """
-        self.embedding = self.embedding.lower()
-        type_embedding = Args.get_embedding_type(self.embedding)
-        self.output_path = self.output_path / type_embedding
+        self.output_path = self.output_path / self.embedding.type()
         self.output_path.mkdir(parents=True, exist_ok=True)
         if not self.additional:
             return
-        self.additional = self.additional.lower()
-        additional_type_embedding = Args.get_embedding_type(self.additional)
-        if type_embedding != additional_type_embedding:
+        if self.embedding.type() != self.additional.type():
             raise ValueError(
                 "combining two kinds of embeddings is not supported"
             )
         if not self.name:
-            self.name = self.embedding
+            self.name = self.embedding.value
             if self.additional:
-                self.name += "_" + self.additional
+                self.name += "_" + self.additional.value
         self.output_path = self.output_path / self.name
 
     @staticmethod
@@ -79,14 +93,14 @@ def parse_args() -> Args:
     parser.add_argument(
         "--embedding",
         "-e",
-        type=str,
+        type=Embedding,
         required=True,
         help='Name of the embedding to use. The embedding must be previously created in the "embeddings" folder, in ".npy" format for both the test and train sets, along with the data CSV files. The name format should be "test_<embedding>.npy."',
     )
     parser.add_argument(
         "--additional",
         "-a",
-        type=str,
+        type=Embedding,
         required=False,
         help="Name of the additional embedding to use along with the main one. The format is the same as for the main embedding. If not present, only the main embedding is used.",
     )
@@ -199,11 +213,11 @@ def load_embeddings(
         test_a = scaler_a.transform(load(test_path))
         train = fusion_concat(train, train_a)
         val = fusion_concat(val, val_a)
-        test = fusion_concat(test, test_a)
+        test = fusion_concat(test, test_a) #type: ignore
     return train, val, test  # type: ignore
 
 
-@timeit("MLP", results)
+@timeit("DNN", results)
 def train_keras(
     X_train: ndarray,
     y_train: ndarray,
@@ -214,10 +228,10 @@ def train_keras(
     random_state: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """ 
-    Finds hyperparameters for a Keras MLP model and trains the best model on the train and validation sets.
+    Finds hyperparameters for a Keras DNN model and trains the best model on the train and validation sets.
     Returns the results and predictions for the test set.
     """
-    print("\nTuning and fitting: MLP")
+    print("\nTuning and fitting DNN: ")
     keras_builder = build_model(X_train, y_train)
     tuner = get_tuner(keras_builder, name, random_state)
     tuner.search(
@@ -238,15 +252,15 @@ def train_keras(
         y_val, y_pred_classes, digits=4, output_dict=True
     )
     assert isinstance(report, dict)
-    results["MLP"] = report
-    results["MLP"]["Hyperparameters"] = tuner.get_best_hyperparameters()[
+    results["DNN"] = report
+    results["DNN"]["Hyperparameters"] = tuner.get_best_hyperparameters()[
         0
     ].values
     print(
-        "#### Report for MLP:\n####",
+        "#### Report for DNN:\n####",
         results,
     )
-    return results, {"MLP": y_test_classes}
+    return results, {"DNN": y_test_classes}
 
 
 def train_classificators(
@@ -317,7 +331,7 @@ def main():
     )
     y_train, y_val = get_labels(train_df, train_idx, val_idx)
     keras_results, keras_preds = train_keras(
-        X_train, y_train, X_val, y_val, X_test, args
+        X_train, y_train, X_val, y_val, X_test, args.name, args.random_state
     )
     class_results, class_preds = train_classificators(
         X_train, y_train, X_val, y_val, X_test, args.random_state

@@ -12,7 +12,7 @@ from fusion_utils import (
     fusion_weighted,
     search_best_weighted_fusion,
 )
-from text_script import (
+from single_script import (
     get_labels,
     get_splits_idx,
     load_dfs,
