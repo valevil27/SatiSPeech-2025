@@ -1,33 +1,54 @@
-# fusion_utils.py
-
+from pathlib import Path
 import numpy as np
+from numpy import ndarray
 import tensorflow as tf
-from tensorflow.keras.layers import MultiHeadAttention # type: ignore
+from typing import Optional
+from tensorflow.keras.layers import MultiHeadAttention  # type: ignore
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 
-# Loader de embeddings
+# Embedding loader
 
-def load_embeddings_npy(file_path, idx_train, idx_val, normalize=True):
+
+def load_embeddings_npy(
+    file_path: Path,
+    idx_train: ndarray,
+    idx_val: ndarray,
+    normalize: bool = True,
+) -> tuple[ndarray, ndarray, Optional[StandardScaler]]:
+    """
+    Loads the embeddings from a .npy file and returns the train and validation sets.
+    If normalize is True, the embeddings are normalized using StandardScaler and the scaler is returned, otherwise None.
+    """
+    scaler = None
     embeddings = np.load(file_path)
     X_train = embeddings[idx_train]
     X_val = embeddings[idx_val]
     del embeddings
     if normalize:
         scaler = StandardScaler()
-        X_train = scaler.fit_transform(X_train)
-        X_val = scaler.transform(X_val)
+        X_train: ndarray = scaler.fit_transform(X_train)
+        X_val: ndarray = scaler.transform(X_val)  # type: ignore
     return X_train, X_val, scaler
 
-# Funciones de fusión de embeddings
 
-def fusion_concat(embedding_a, embedding_b):
+# Embedding fusion functions
+
+
+def fusion_concat(embedding_a: ndarray, embedding_b: ndarray) -> ndarray:
     """
-    Fusión por concatenación de dos embeddings.
+    Concatenation fusion between two embeddings.
     """
     return np.concatenate([embedding_a, embedding_b], axis=1)
 
-def normalize(embedding_a, embedding_b):
+
+def normalize(
+    embedding_a: ndarray, embedding_b: ndarray
+) -> tuple[ndarray, ndarray]:
+    """
+    Given two embeddings, normalizes them to the same size, making them able to be fused with
+    several fusion methods that require them to be of the same size.
+    """
     print("Normalizing embeddings...")
     dim_a, dim_b = embedding_a.shape[1], embedding_b.shape[1]
     if dim_a == dim_b:
@@ -39,23 +60,33 @@ def normalize(embedding_a, embedding_b):
     print(f"Embedding b: {emb_b.shape}")
     return emb_a, emb_b
 
-def fusion_mean(embedding_a, embedding_b):
+
+def fusion_mean(embedding_a: ndarray, embedding_b: ndarray) -> ndarray:
     """
-    Fusión por media entre dos embeddings del mismo tamaño.
+    Mean fusion between two embeddings. Requires the embeddings to be of the same size.
     """
     emb_a, emb_b = normalize(embedding_a, embedding_b)
     return (emb_a + emb_b) / 2
 
-def fusion_weighted(embedding_a, embedding_b, weight_a=0.5, weight_b=0.5):
+
+def fusion_weighted(
+    embedding_a: ndarray,
+    embedding_b: ndarray,
+    weight_a: float = 0.5,
+    weight_b: float = 0.5,
+) -> ndarray:
     """
-    Fusión ponderada entre dos embeddings del mismo tamaño.
+    Weighted fusion between two embeddings. Requires the embeddings to be of the same size.
     """
     embedding_a, embedding_b = normalize(embedding_a, embedding_b)
     return (weight_a * embedding_a) + (weight_b * embedding_b)
 
-def fusion_attention(embedding_a, embedding_b, num_heads=4):
+
+def fusion_attention(
+    embedding_a: ndarray, embedding_b: ndarray, num_heads: int = 4
+) -> ndarray:
     """
-    Fusión mediante atención multi-cabeza entre dos embeddings.
+    Multihead attention fusion between two embeddings. Requires the embeddings to be of the same size.
     """
     embedding_a, embedding_b = normalize(embedding_a, embedding_b)
     d_model = embedding_a.shape[1]
@@ -77,23 +108,36 @@ def fusion_attention(embedding_a, embedding_b, num_heads=4):
 
     return att_output
 
-def search_best_weighted_fusion(X_train_a, X_train_b, X_val_a, X_val_b, y_train, y_val, model=None):
+
+def search_best_weighted_fusion(
+    X_train_a: ndarray,
+    X_train_b: ndarray,
+    X_val_a: ndarray,
+    X_val_b: ndarray,
+    y_train: ndarray,
+    y_val: ndarray,
+    model: Optional[LogisticRegression] = None,
+) -> tuple[tuple[float, float], float]:
     """
-    Búsqueda de la mejor combinación de pesos para la fusión ponderada.
+    Search for the best fusion weight between two embeddings using a logistic regression model.
     """
     if model is None:
-        model = LogisticRegression(max_iter=1000, random_state=42)
+        model = LogisticRegression(max_iter=1000, random_state=420)
 
-    best_score = 0
+    best_score: float = 0
     best_weights = (0.5, 0.5)
 
     for w_a in np.arange(0.1, 1.0, 0.1):
         w_b = 1.0 - w_a
-        X_train_fusion = fusion_weighted(X_train_a, X_train_b, weight_a=w_a, weight_b=w_b)
-        X_val_fusion = fusion_weighted(X_val_a, X_val_b, weight_a=w_a, weight_b=w_b)
+        X_train_fusion = fusion_weighted(
+            X_train_a, X_train_b, weight_a=w_a, weight_b=w_b
+        )
+        X_val_fusion = fusion_weighted(
+            X_val_a, X_val_b, weight_a=w_a, weight_b=w_b
+        )
 
         model.fit(X_train_fusion, y_train)
-        score = model.score(X_val_fusion, y_val)
+        score: float = float(model.score(X_val_fusion, y_val))
 
         if score > best_score:
             best_score = score

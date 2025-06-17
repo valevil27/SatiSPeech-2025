@@ -134,15 +134,21 @@ def parse_args() -> Args:
     )
 
 
-def load_dfs(data_path: Path):
-    train_df = pd.read_csv(data_path / "SatiSPeech_phase_2_train_public.csv")
-    test_df = pd.read_csv(data_path / "SatiSPeech_phase_2_test_public.csv")
+def load_dfs(data_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """ 
+    Loads the train and test CSV files from the data directory.
+    """
+    train_df = pd.read_csv(data_dir / "SatiSPeech_phase_2_train_public.csv")
+    test_df = pd.read_csv(data_dir / "SatiSPeech_phase_2_test_public.csv")
     return train_df, test_df
 
 
 def get_splits_idx(
     train_df: pd.DataFrame, train_size: int, val_size: int, random_state: int
 ) -> tuple[ndarray, ndarray]:
+    """ 
+    Gets the train and validation indices from the train dataframe given the train size and validation size.
+    """
     train_idx, val_idx = train_test_split(
         train_df.index.values,
         train_size=train_size,
@@ -156,6 +162,7 @@ def get_splits_idx(
 def get_labels(
     train_df: pd.DataFrame, train_idx: ndarray, val_idx: ndarray
 ) -> tuple[ndarray, ndarray]:
+    """ Gets the train and validation labels from the train dataframe given the train and validation indices. """
     y_train = (
         train_df.loc[train_idx, "label"]
         .map({"satire": 1, "no-satire": 0})
@@ -168,24 +175,27 @@ def get_labels(
 
 
 def load_embeddings(
-    data_path: Path,
+    data_dir: Path,
     train_idx: ndarray,
     val_idx: ndarray,
     embedding: str,
     additional: Optional[str],
 ) -> tuple[ndarray, ndarray, ndarray]:
-    test_path = data_path / f"embeddings/test_{embedding}.npy"
-    train_path = data_path / f"embeddings/train_{embedding}.npy"
+    """ Loads the train, validation and test embeddings from the data directory. """
+    test_path = data_dir / f"embeddings/test_{embedding}.npy"
+    train_path = data_dir / f"embeddings/train_{embedding}.npy"
     train, val, scaler = load_embeddings_npy(
-        train_path, idx_train=train_idx, idx_val=val_idx
+        train_path, idx_train=train_idx, idx_val=val_idx,
     )
+    assert scaler is not None
     test = scaler.transform(load(test_path))
     if additional:
-        test_path = data_path / f"embeddings/test_{additional.lower()}.npy"
-        train_path = data_path / f"embeddings/train_{additional.lower()}.npy"
+        test_path = data_dir / f"embeddings/test_{additional.lower()}.npy"
+        train_path = data_dir / f"embeddings/train_{additional.lower()}.npy"
         train_a, val_a, scaler_a = load_embeddings_npy(
             train_path, idx_train=train_idx, idx_val=val_idx
         )
+        assert scaler_a is not None
         test_a = scaler_a.transform(load(test_path))
         train = fusion_concat(train, train_a)
         val = fusion_concat(val, val_a)
@@ -203,6 +213,10 @@ def train_keras(
     name: str,
     random_state: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """ 
+    Finds hyperparameters for a Keras MLP model and trains the best model on the train and validation sets.
+    Returns the results and predictions for the test set.
+    """
     print("\nTuning and fitting: MLP")
     keras_builder = build_model(X_train, y_train)
     tuner = get_tuner(keras_builder, name, random_state)
@@ -243,6 +257,10 @@ def train_classificators(
     X_test: ndarray,
     random_state: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """ 
+    Finds hyperparameters for several classification models and trains the best model on the train and validation sets.
+    Returns the results and predictions for the test set.
+    """
     classifiers = get_classifiers(random_state)
     for name, model in classifiers.items():
         timed_training = timeit(name, results)(train_classificator)
@@ -251,6 +269,7 @@ def train_classificators(
 
 
 def train_classificator(X_train, y_train, X_val, y_val, X_test, name, model):
+    """ Trains a classification model on the train and validation sets and returns the results and predictions for the test set. """
     print(f"\nTuning and fitting: {name}")
     model.fit(X_train, y_train)
     y_pred = model.predict(X_val)
@@ -269,6 +288,7 @@ def save_results(
     predictions: dict[str, Any],
     output: Path,
 ):
+    """ Saves the results to a JSON file and the predictions to a CSV file. """
     with open(output.with_suffix(".json"), "w") as f:
         json.dump(results, f)
     df = pd.DataFrame.from_dict(predictions, orient="index").transpose()
