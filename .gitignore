@@ -29,3 +29,5 @@ scripts/.fusion_utils.py
 commands
 og_trans
 train_scripts/.fusion_utils.py
+main.ipynb
+best_combi.ipynb

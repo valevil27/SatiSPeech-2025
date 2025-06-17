@@ -63,12 +63,11 @@ class Args:
         """
         self.output_path = self.output_path / self.embedding.type()
         self.output_path.mkdir(parents=True, exist_ok=True)
-        if not self.additional:
-            return
-        if self.embedding.type() != self.additional.type():
-            raise ValueError(
-                "combining two kinds of embeddings is not supported"
-            )
+        if self.additional:
+            if self.embedding.type() != self.additional.type():
+                raise ValueError(
+                    "combining two kinds of embeddings is not supported"
+                )
         if not self.name:
             self.name = self.embedding.value
             if self.additional:
