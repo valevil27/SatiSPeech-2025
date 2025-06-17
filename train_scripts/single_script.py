@@ -14,6 +14,8 @@ from keras_utils import build_model, get_tuner, early_stop
 
 results = {}
 predictions = {}
+
+
 class Embedding(StrEnum):
     FASTTEXT = auto()
     MFCC_FULL = auto()
@@ -25,23 +27,19 @@ class Embedding(StrEnum):
     HUBERT_MEAN = auto()
     W2V2_CLS = auto()
     W2V2_MEAN = auto()
-    
+
     def type(self) -> str:
-        if self in [Embedding.HUBERT_CLS, Embedding.HUBERT_MEAN, Embedding.W2V2_CLS, Embedding.W2V2_MEAN]:
+        if self in [
+            Embedding.HUBERT_CLS,
+            Embedding.HUBERT_MEAN,
+            Embedding.W2V2_CLS,
+            Embedding.W2V2_MEAN,
+            Embedding.MFCC_STATS,
+            Embedding.MFCC_PROSODIC,
+            Embedding.MFCC_FULL,
+        ]:
             return "audio"
         return "text"
-    
-valid_embeddings = {
-    "text": [
-        "fasttext",
-        "mfcc_full",
-        "mfcc_prosodic",
-        "mfcc_stats",
-        "word2vec",
-        "roberta",
-    ],
-    "audio": ["hubert_cls", "hubert_mean", "w2v2_cls", "w2v2_mean"],
-}
 
 
 @dataclass
@@ -74,20 +72,16 @@ class Args:
                 self.name += "_" + self.additional.value
         self.output_path = self.output_path / self.name
 
-    @staticmethod
-    def get_embedding_type(embedding: str) -> str:
-        for k, v in valid_embeddings.items():
-            if embedding in v:
-                return k
-        raise ValueError("embedding not supported")
-
-
 def parse_args() -> Args:
     parser = ArgumentParser(
         description="Script that trains several models using the provided embeddings data as input and produces several results."
     )
     parser.add_argument(
-        "--name", "-n", type=str, required=False, help="Experiment name. If none, one based on the experiment is given."
+        "--name",
+        "-n",
+        type=str,
+        required=False,
+        help="Experiment name. If none, one based on the experiment is given.",
     )
     parser.add_argument(
         "--embedding",
@@ -148,7 +142,7 @@ def parse_args() -> Args:
 
 
 def load_dfs(data_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """ 
+    """
     Loads the train and test CSV files from the data directory.
     """
     train_df = pd.read_csv(data_dir / "SatiSPeech_phase_2_train_public.csv")
@@ -159,7 +153,7 @@ def load_dfs(data_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
 def get_splits_idx(
     train_df: pd.DataFrame, train_size: int, val_size: int, random_state: int
 ) -> tuple[ndarray, ndarray]:
-    """ 
+    """
     Gets the train and validation indices from the train dataframe given the train size and validation size.
     """
     train_idx, val_idx = train_test_split(
@@ -175,7 +169,7 @@ def get_splits_idx(
 def get_labels(
     train_df: pd.DataFrame, train_idx: ndarray, val_idx: ndarray
 ) -> tuple[ndarray, ndarray]:
-    """ Gets the train and validation labels from the train dataframe given the train and validation indices. """
+    """Gets the train and validation labels from the train dataframe given the train and validation indices."""
     y_train = (
         train_df.loc[train_idx, "label"]
         .map({"satire": 1, "no-satire": 0})
@@ -194,11 +188,13 @@ def load_embeddings(
     embedding: str,
     additional: Optional[str],
 ) -> tuple[ndarray, ndarray, ndarray]:
-    """ Loads the train, validation and test embeddings from the data directory. """
+    """Loads the train, validation and test embeddings from the data directory."""
     test_path = data_dir / f"embeddings/test_{embedding}.npy"
     train_path = data_dir / f"embeddings/train_{embedding}.npy"
     train, val, scaler = load_embeddings_npy(
-        train_path, idx_train=train_idx, idx_val=val_idx,
+        train_path,
+        idx_train=train_idx,
+        idx_val=val_idx,
     )
     assert scaler is not None
     test = scaler.transform(load(test_path))
@@ -212,7 +208,7 @@ def load_embeddings(
         test_a = scaler_a.transform(load(test_path))
         train = fusion_concat(train, train_a)
         val = fusion_concat(val, val_a)
-        test = fusion_concat(test, test_a) #type: ignore
+        test = fusion_concat(test, test_a)  # type: ignore
     return train, val, test  # type: ignore
 
 
@@ -226,7 +222,7 @@ def train_keras(
     name: str,
     random_state: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """ 
+    """
     Finds hyperparameters for a Keras DNN model and trains the best model on the train and validation sets.
     Returns the results and predictions for the test set.
     """
@@ -242,7 +238,13 @@ def train_keras(
     )
     best_hps = tuner.get_best_hyperparameters()[0]
     best_model = keras_builder(best_hps)
-    best_model.fit(X_train, y_train, epochs=50, validation_split=0.2, callbacks=[early_stop])
+    best_model.fit(
+        X_train,
+        y_train,
+        epochs=50,
+        validation_split=0.2,
+        callbacks=[early_stop],
+    )
     y_pred = best_model.predict(X_val)
     y_pred_classes = y_pred.argmax(axis=1)
     y_test = best_model.predict(X_test)
@@ -270,7 +272,7 @@ def train_classificators(
     X_test: ndarray,
     random_state: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """ 
+    """
     Finds hyperparameters for several classification models and trains the best model on the train and validation sets.
     Returns the results and predictions for the test set.
     """
@@ -282,7 +284,7 @@ def train_classificators(
 
 
 def train_classificator(X_train, y_train, X_val, y_val, X_test, name, model):
-    """ Trains a classification model on the train and validation sets and returns the results and predictions for the test set. """
+    """Trains a classification model on the train and validation sets and returns the results and predictions for the test set."""
     print(f"\nTuning and fitting: {name}")
     model.fit(X_train, y_train)
     y_pred = model.predict(X_val)
@@ -301,7 +303,7 @@ def save_results(
     predictions: dict[str, Any],
     output: Path,
 ):
-    """ Saves the results to a JSON file and the predictions to a CSV file. """
+    """Saves the results to a JSON file and the predictions to a CSV file."""
     with open(output.with_suffix(".json"), "w") as f:
         json.dump(results, f)
     df = pd.DataFrame.from_dict(predictions, orient="index").transpose()
