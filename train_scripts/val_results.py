@@ -93,7 +93,7 @@ class Args:
 
     def load_hyperparameters_sk(self) -> dict:
         with open(self.input_json, "r") as f:
-            return json.load(f)
+            return json.load(f)[self.model.value]["Hyperparameters"]
 
     def load_hyperparameters_kt(self) -> HyperParameters:
         hyperparameters = HyperParameters()
@@ -157,10 +157,16 @@ def main():
 \t- Fusion method: {args.method.value}
 \t- Classifier: {args.model.value}
 \t- Hyperparameters:""")
-    for k, v in args.hyperparameters.values.items():
+    if isinstance(args.hyperparameters, HyperParameters):
+        params = args.hyperparameters.values
+    else:
+        params = args.hyperparameters
+    for k, v in params.items():
         print(f"\t\t> {k}: {v}")
-    train_df, test_df = load_dfs(args.data_dir)
+    print("Loading data...")
+    train_df, _ = load_dfs(args.data_dir)
     train_idx, val_idx = load_idx(IDX_PATH)
+    print("Loading embeddings...")
     X_train_text, X_val_text, X_test_text = load_embeddings(
         args.data_dir,
         train_idx,
@@ -187,11 +193,12 @@ def main():
         y_val,
         args.method,
     )
+    print("Training model...")
     match args.model:
         case Model.DNN:
             assert isinstance(args.hyperparameters, HyperParameters)
             model = build_model(X_train, y_train)(args.hyperparameters)
-            model.fit(X_train, y_train, epochs=50, validation_split=0.2, callbacks=[get_early_stop()])
+            model.fit(X_train, y_train, epochs=50, validation_split=0.2, callbacks=[get_early_stop()], verbose=0) # type: ignore
             prediction = model.predict(X_val).argmax(axis=1)
         case Model.LogisticRegression:
             assert isinstance(args.hyperparameters, dict)
@@ -225,7 +232,7 @@ def main():
             "audio_embeddings": args.audio_embeddings,
             "method": args.method.value,
             "model": args.model.value,
-            "hyperparameters": args.hyperparameters.values,
+            "hyperparameters": args.hyperparameters.values if isinstance(args.hyperparameters, HyperParameters) else args.hyperparameters,
             "ids_with_errors": ids_with_errors,
         }, f)
     print("Results saved to", args.output_dir / f"{args.name}.json")
