@@ -18,15 +18,15 @@ predictions = {}
 
 class Embedding(StrEnum):
     FASTTEXT = auto()
-    MFCC_FULL = auto()
-    MFCC_PROSODIC = auto()
-    MFCC_STATS = auto()
+    MFCC_FULL = "mfcc-full"
+    MFCC_PROSODIC = "mfcc-prosodic"
+    MFCC_STATS = "mfcc-stats"
     WORD2VEC = auto()
     ROBERTA = auto()
-    HUBERT_CLS = auto()
-    HUBERT_MEAN = auto()
-    W2V2_CLS = auto()
-    W2V2_MEAN = auto()
+    HUBERT_CLS = "hubert-cls"
+    HUBERT_MEAN = "hubert-mean"
+    W2V2_CLS = "w2v2-cls"
+    W2V2_MEAN = "w2v2-mean"
 
     def type(self) -> str:
         if self in [
@@ -44,7 +44,6 @@ class Embedding(StrEnum):
 
 @dataclass
 class Args:
-    name: Optional[str]
     embedding: Embedding
     additional: Optional[Embedding]
     train_size: int
@@ -66,22 +65,15 @@ class Args:
                 raise ValueError(
                     "combining two kinds of embeddings is not supported"
                 )
-        if not self.name:
-            self.name = self.embedding.value
-            if self.additional:
-                self.name += "_" + self.additional.value
+        self.name = self.embedding.value
+        if self.additional:
+            self.name += "_" + self.additional.value
         self.output_path = self.output_path / self.name
+
 
 def parse_args() -> Args:
     parser = ArgumentParser(
         description="Script that trains several models using the provided embeddings data as input and produces several results."
-    )
-    parser.add_argument(
-        "--name",
-        "-n",
-        type=str,
-        required=False,
-        help="Experiment name. If none, one based on the experiment is given.",
     )
     parser.add_argument(
         "--embedding",
@@ -133,7 +125,6 @@ def parse_args() -> Args:
     )
     args = parser.parse_args()
     return Args(
-        name=args.name,
         embedding=args.embedding,
         additional=args.additional,
         train_size=args.train_size,
@@ -318,9 +309,9 @@ def main():
     args = parse_args()
     data_path = Path.cwd() / "data/public_data"
     embeddings = (
-        args.embedding + "+" + args.additional
-        if args.additional
-        else args.embedding
+        args.embedding.value
+        if args.additional is None
+        else args.embedding.value + "+" + args.additional.value
     )
     print(f"Experimento {args.name}, usando embedding {embeddings}.")
     print(f"Random state: {args.random_state}")

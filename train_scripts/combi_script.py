@@ -43,7 +43,6 @@ class Method(StrEnum):
 
 @dataclass
 class Args:
-    name: Optional[str]
     text_embedding: Embedding
     text_additional: Optional[Embedding]
     audio_embedding: Embedding
@@ -75,13 +74,12 @@ class Args:
         if Method.ALL in self.methods:
             self.methods = Method.valid_methods()
         self.output_path.mkdir(parents=True, exist_ok=True)
-        if not self.name:
-            self.name = self.text_embedding.value
-            if self.text_additional:
-                self.name += "_" + self.text_additional.value
-            self.name += "+" + self.audio_embedding.value
-            if self.audio_additional:
-                self.name += "_" + self.audio_additional.value
+        self.name = self.text_embedding.value
+        if self.text_additional:
+            self.name += "_" + self.text_additional.value
+        self.name += "+" + self.audio_embedding.value
+        if self.audio_additional:
+            self.name += "_" + self.audio_additional.value
         self.output_path = self.output_path / f"{self.name}"
 
 
@@ -125,13 +123,6 @@ def fuse_embeddings(
 def parse_args() -> Args:
     parser = ArgumentParser(
         description="Script that trains several models using the provided embeddings data as input and produces several results."
-    )
-    parser.add_argument(
-        "--name",
-        "-n",
-        type=str,
-        required=False,
-        help="Experiment name. By default uses a combination of the embeddings used in the experiment.",
     )
     parser.add_argument(
         "--text-embedding",
@@ -208,7 +199,6 @@ def parse_args() -> Args:
     )
     args = parser.parse_args()
     return Args(
-        name=args.name,
         text_embedding=args.text_embedding,
         text_additional=args.text_additional,
         audio_embedding=args.audio_embedding,
@@ -285,7 +275,7 @@ def main():
             keras_results | class_results,
             keras_preds | class_preds,
             args.output_path.with_name(
-                args.output_path.name + "_" + method.value
+                args.output_path.name + "+" + method.value
             ),
         )
 
