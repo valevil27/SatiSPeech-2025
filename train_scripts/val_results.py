@@ -1,3 +1,4 @@
+import argparse
 from dataclasses import dataclass, field
 from enum import StrEnum
 import numpy as np
@@ -6,8 +7,9 @@ from pathlib import Path
 import random
 from keras_tuner import HyperParameters
 from numpy import ndarray
-from single_script import Embedding
+from single_script import Embedding, load_dfs
 from combi_script import Method
+
 
 IDX_PATH = Path(__file__).parent / "idx.txt"
 
@@ -35,29 +37,32 @@ class Model(StrEnum):
 @dataclass
 class Args:
     model: Model
-    results_path: Path
+    input_json: Path
+    data_dir: Path
+    output_dir: Path
     text_embeddings: list[Embedding] = field(default_factory=list)
     audio_embeddings: list[Embedding] = field(default_factory=list)
     method: Method = Method.CONCAT
 
     def __post_init__(self):
-        self.text_embeddings, self.audio_embeddings, self.method = Args.parse_name(
-            self.results_path.stem
+        assert self.data_dir.exists(), (
+            f"data directory {self.data_dir} does not exist"
         )
-        if not self.results_path.exists():
+        self.text_embeddings, self.audio_embeddings, self.method = (
+            Args.parse_name(self.input_json.stem)
+        )
+        if not self.input_json.exists():
             raise ValueError(
-                f"The results path {self.results_path} does not exist."
+                f"The results path {self.input_json} does not exist."
             )
-        if self.results_path.suffix != ".json":
+        if self.input_json.suffix != ".json":
             raise ValueError(
-                f"The results path {self.results_path} must be a JSON file."
+                f"The results path {self.input_json} must be a JSON file."
             )
-        self.hyperparameters = HyperParameters()
-        with open(self.results_path, "r") as f:
-            for hp, val in json.load(f)[self.model.value][
-                "Hyperparameters"
-            ].items():
-                self.hyperparameters.values[hp] = val
+        if self.model == Model.DNN:
+            self.hyperparameters = self.load_hyperparameters_kt()
+        else:
+            self.hyperparameters = self.load_hyperparameters_sk()
 
     @staticmethod
     def parse_name(
@@ -70,12 +75,65 @@ class Args:
         ae = [Embedding(m) for m in audio_str.split("_")]
         return te, ae, Method(method_str)
 
+    def load_hyperparameters_sk(self) -> dict:
+        with open(self.input_json, "r") as f:
+            return json.load(f)
+
+    def load_hyperparameters_kt(self) -> HyperParameters:
+        hyperparameters = HyperParameters()
+        with open(self.input_json, "r") as f:
+            for hp, val in json.load(f)[self.model.value][
+                "Hyperparameters"
+            ].items():
+                hyperparameters.values[hp] = val
+        return hyperparameters
+
+
+def parse_args() -> Args:
+    parser = argparse.ArgumentParser(
+        description="Script that trains a model a using the provided result file hyperparameters and returns the index of the missclassified samples."
+    )
+    parser.add_argument(
+        "--data-dir",
+        "-d",
+        type=Path,
+        default=Path("data/public_data"),
+        help="Path to the data directory. Default: ./data/public_data",
+    )
+    parser.add_argument(
+        "--model",
+        "-m",
+        type=Model,
+        required=True,
+        choices=Model,
+        help="Model to use for classification.",
+    )
+    parser.add_argument(
+        "--input-json",
+        "-i",
+        type=Path,
+        required=True,
+        help="Path to the JSON file with the results of the experiment with the model hyperparameters.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        "-o",
+        type=Path,
+        required=False,
+        default=Path("results/misses"),
+        help="Output directory for the results JSON files (created if it does not exist). Default: ./results/misses.",
+    )
+    args = parser.parse_args()
+    return Args(
+        data_dir=args.data_dir,
+        model=args.model,
+        input_json=args.input_json,
+        output_dir=args.output_dir,
+    )
+
 
 def main():
-    results_path = (
-        Path.cwd() / "results/combi/roberta+mfcc-full_hubert-mean+attention.json"
-    )
-    args = Args(model=Model.DNN, results_path=results_path)
+    args = parse_args()
     print(args)
     print(f"""\nStrategy to follow:
 \t- Text embedding: {", ".join(map(str, args.text_embeddings))}
@@ -84,7 +142,8 @@ def main():
 \t- Classifier: {args.model.value}
 \t- Hyperparameters:""")
     for k, v in args.hyperparameters.values.items():
-        print(f"\t\t> {k}: {v}") 
+        print(f"\t\t> {k}: {v}")
+    train_df, test_df = load_dfs(args.data_dir)
     train_idx, val_idx = load_idx(IDX_PATH)
 
 
