@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 import numpy as np
 import json
@@ -10,6 +10,7 @@ from single_script import Embedding
 from combi_script import Method
 
 IDX_PATH = Path(__file__).parent / "idx.txt"
+
 
 def load_idx(path: Path) -> tuple[ndarray, ndarray]:
     if not path.exists():
@@ -23,14 +24,6 @@ def load_idx(path: Path) -> tuple[ndarray, ndarray]:
     train_idx = set(range(6000)) - val_idx
     return np.array(list(train_idx)), np.array(list(val_idx))
 
-def parse_name(name: str) -> tuple[list[Embedding], list[Embedding], Method]:
-    te = list()
-    ae = list()
-    text_str, audio_str, method_str = name.split("+")
-    te = [Embedding(m) for m in text_str.split("_")]
-    ae = [Embedding(m) for m in audio_str.split("_")]
-    return te, ae, Method(method_str)
-
 
 class Model(StrEnum):
     DNN = "DNN"
@@ -43,9 +36,12 @@ class Model(StrEnum):
 class Args:
     model: Model
     results_path: Path
+    text_embeddings: list[Embedding] = field(default_factory=list)
+    audio_embeddings: list[Embedding] = field(default_factory=list)
+    method: Method = Method.CONCAT
 
     def __post_init__(self):
-        self.text_embeddings, self.audio_embeddings, self.method = parse_name(
+        self.text_embeddings, self.audio_embeddings, self.method = Args.parse_name(
             self.results_path.stem
         )
         if not self.results_path.exists():
@@ -58,18 +54,38 @@ class Args:
             )
         self.hyperparameters = HyperParameters()
         with open(self.results_path, "r") as f:
-            for hp, val in json.load(f)[self.model.value]["Hyperparameters"].items():
+            for hp, val in json.load(f)[self.model.value][
+                "Hyperparameters"
+            ].items():
                 self.hyperparameters.values[hp] = val
+
+    @staticmethod
+    def parse_name(
+        name: str,
+    ) -> tuple[list[Embedding], list[Embedding], Method]:
+        te = list()
+        ae = list()
+        text_str, audio_str, method_str = name.split("+")
+        te = [Embedding(m) for m in text_str.split("_")]
+        ae = [Embedding(m) for m in audio_str.split("_")]
+        return te, ae, Method(method_str)
+
 
 def main():
     results_path = (
-        Path.cwd() / "results/combi/fasttext+hubert_cls_attention.json"
+        Path.cwd() / "results/combi/roberta+mfcc-full_hubert-mean+attention.json"
     )
     args = Args(model=Model.DNN, results_path=results_path)
     print(args)
-    print(args.hyperparameters.values)
+    print(f"""\nStrategy to follow:
+\t- Text embedding: {", ".join(map(str, args.text_embeddings))}
+\t- Audio embedding: {", ".join(map(str, args.audio_embeddings))}
+\t- Fusion method: {args.method.value}
+\t- Classifier: {args.model.value}
+\t- Hyperparameters:""")
+    for k, v in args.hyperparameters.values.items():
+        print(f"\t\t> {k}: {v}") 
     train_idx, val_idx = load_idx(IDX_PATH)
-    print(val_idx)
 
 
 if __name__ == "__main__":
