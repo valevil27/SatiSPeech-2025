@@ -248,7 +248,7 @@ def train_keras(
         y_train,
         epochs=50,
         validation_split=0.2,
-        callbacks=[get_early_stop],
+        callbacks=[get_early_stop()],
     )
     y_pred = best_model.predict(X_val)
     y_pred_classes = y_pred.argmax(axis=1)

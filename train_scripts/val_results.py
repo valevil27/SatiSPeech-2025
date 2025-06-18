@@ -7,8 +7,18 @@ from pathlib import Path
 import random
 from keras_tuner import HyperParameters
 from numpy import ndarray
-from single_script import Embedding, load_dfs
-from combi_script import Method
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from single_script import (
+    Embedding,
+    get_labels,
+    load_dfs,
+    load_embeddings,
+)
+from combi_script import Method, fuse_embeddings
+from keras_utils import build_model, get_early_stop
 
 
 IDX_PATH = Path(__file__).parent / "idx.txt"
@@ -59,10 +69,16 @@ class Args:
             raise ValueError(
                 f"The results path {self.input_json} must be a JSON file."
             )
+        if not self.output_dir.exists():
+            self.output_dir.mkdir(parents=True)
         if self.model == Model.DNN:
             self.hyperparameters = self.load_hyperparameters_kt()
         else:
             self.hyperparameters = self.load_hyperparameters_sk()
+        self.name = self.model.value
+        self.name += f"+{'_'.join(map(str, self.text_embeddings))}"
+        self.name += f"+{'_'.join(map(str, self.audio_embeddings))}"
+        self.name += f"+{self.method.value}"
 
     @staticmethod
     def parse_name(
@@ -145,6 +161,74 @@ def main():
         print(f"\t\t> {k}: {v}")
     train_df, test_df = load_dfs(args.data_dir)
     train_idx, val_idx = load_idx(IDX_PATH)
+    X_train_text, X_val_text, X_test_text = load_embeddings(
+        args.data_dir,
+        train_idx,
+        val_idx,
+        args.text_embeddings[0],
+        None if len(args.text_embeddings) == 1 else args.text_embeddings[1],
+    )
+    X_train_audio, X_val_audio, X_test_audio = load_embeddings(
+        args.data_dir,
+        train_idx,
+        val_idx,
+        args.audio_embeddings[0],
+        None if len(args.audio_embeddings) == 1 else args.audio_embeddings[1],
+    )
+    y_train, y_val = get_labels(train_df, train_idx, val_idx)
+    X_train, X_val, X_test = fuse_embeddings(
+        X_train_text,
+        X_train_audio,
+        X_val_text,
+        X_val_audio,
+        X_test_text,
+        X_test_audio,
+        y_train,
+        y_val,
+        args.method,
+    )
+    match args.model:
+        case Model.DNN:
+            assert isinstance(args.hyperparameters, HyperParameters)
+            model = build_model(X_train, y_train)(args.hyperparameters)
+            model.fit(X_train, y_train, epochs=50, validation_split=0.2, callbacks=[get_early_stop()])
+            prediction = model.predict(X_val).argmax(axis=1)
+        case Model.LogisticRegression:
+            assert isinstance(args.hyperparameters, dict)
+            model = LogisticRegression(**args.hyperparameters)
+            model.fit(X_train, y_train)
+            prediction = model.predict(X_val)
+        case Model.SVM:
+            assert isinstance(args.hyperparameters, dict)
+            model = SVC(**args.hyperparameters)
+            model.fit(X_train, y_train)
+            prediction = model.predict(X_val)
+        case Model.LogisticRegression:
+            assert isinstance(args.hyperparameters, dict)
+            model = RandomForestClassifier(**args.hyperparameters)
+            model.fit(X_train, y_train)
+            prediction = model.predict(X_val)
+        case _:
+            raise ValueError(f"Model {args.model} not valid")
+    df = pd.DataFrame.from_dict(
+        {
+            "true": y_val,
+            "prediction": prediction,
+        },
+        orient="index",
+    ).transpose()
+    df["id"] = train_df["id"].str.removesuffix(".mp3")
+    ids_with_errors = df[df["true"] != df["prediction"]]["id"].values.tolist()
+    with open(args.output_dir / f"{args.name}.json", "w") as f:
+        json.dump({
+            "text_embeddings": args.text_embeddings,
+            "audio_embeddings": args.audio_embeddings,
+            "method": args.method.value,
+            "model": args.model.value,
+            "hyperparameters": args.hyperparameters.values,
+            "ids_with_errors": ids_with_errors,
+        }, f)
+    print("Results saved to", args.output_dir / f"{args.name}.json")
 
 
 if __name__ == "__main__":
