@@ -7,7 +7,7 @@ from typing import Any, Optional
 from numpy import ndarray, load
 import pandas as pd
 from sklearn.metrics import classification_report
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GridSearchCV, train_test_split
 from fusion_utils import fusion_concat, load_embeddings_npy
 from classif_utils import get_classifiers, timeit
 from keras_utils import build_model, get_tuner, get_early_stop
@@ -190,12 +190,12 @@ def load_embeddings(
     data_dir: Path,
     train_idx: ndarray,
     val_idx: ndarray,
-    embedding: str,
-    additional: Optional[str],
+    embedding: Embedding,
+    additional: Optional[Embedding],
 ) -> tuple[ndarray, ndarray, ndarray]:
     """Loads the train, validation and test embeddings from the data directory."""
-    test_path = data_dir / f"embeddings/test_{embedding}.npy"
-    train_path = data_dir / f"embeddings/train_{embedding}.npy"
+    test_path = data_dir / f"embeddings/test_{embedding.value}.npy"
+    train_path = data_dir / f"embeddings/train_{embedding.value}.npy"
     train, val, scaler = load_embeddings_npy(
         train_path,
         idx_train=train_idx,
@@ -204,8 +204,8 @@ def load_embeddings(
     assert scaler is not None
     test = scaler.transform(load(test_path))
     if additional:
-        test_path = data_dir / f"embeddings/test_{additional.lower()}.npy"
-        train_path = data_dir / f"embeddings/train_{additional.lower()}.npy"
+        test_path = data_dir / f"embeddings/test_{additional.value}.npy"
+        train_path = data_dir / f"embeddings/train_{additional.value}.npy"
         train_a, val_a, scaler_a = load_embeddings_npy(
             train_path, idx_train=train_idx, idx_val=val_idx
         )
@@ -288,7 +288,15 @@ def train_classificators(
     return results, predictions
 
 
-def train_classificator(X_train, y_train, X_val, y_val, X_test, name, model):
+def train_classificator(
+    X_train: ndarray,
+    y_train: ndarray,
+    X_val: ndarray,
+    y_val: ndarray,
+    X_test: ndarray,
+    name: str,
+    model: GridSearchCV,
+):
     """Trains a classification model on the train and validation sets and returns the results and predictions for the test set."""
     print(f"\nTuning and fitting: {name}")
     model.fit(X_train, y_train)
@@ -325,9 +333,9 @@ def main():
         if args.additional is None
         else args.embedding.value + "+" + args.additional.value
     )
-    print(f"Experimento {args.name}, usando embedding {embeddings}.")
+    print(f"Experiment {args.name}, using embedding {embeddings}.")
     print(f"Random state: {args.random_state}")
-    print(f"Directorio de salida: {args.output_path}")
+    print(f"Output directory: {args.output_path}")
     train_df, test_df = load_dfs(data_path)
     train_idx, val_idx = get_splits_idx(
         train_df, args.train_size, args.val_size, args.random_state

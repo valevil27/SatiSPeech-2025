@@ -6,7 +6,9 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.svm import SVC
 
 
-def get_classifiers(random_state: int, cv: int = 5, verbose: int = 1):
+def get_classifiers(
+    random_state: int, cv: int = 5, verbose: int = 1
+) -> dict[str, GridSearchCV]:
     """
     Creates a dictionary of scikit-learn GridSearchCV objects for different classifiers with predefined hyperparameter grids.
 
@@ -79,5 +81,7 @@ def timeit(label: str, results: dict[str, Any]):
             print(f"[TIMER] {label} took {duration:.4} seconds to run.")
             results[label]["duration"] = duration
             return rets
+
         return wrapper
+
     return decorator

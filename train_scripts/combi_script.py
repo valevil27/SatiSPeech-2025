@@ -96,7 +96,7 @@ def fuse_embeddings(
     X_test_audio: ndarray,
     y_train: ndarray,
     y_val: ndarray,
-    method: str,
+    method: Method,
 ) -> tuple[ndarray, ndarray, ndarray]:
     f: Callable
     match method:
