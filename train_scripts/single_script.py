@@ -46,6 +46,7 @@ class Embedding(StrEnum):
 class Args:
     embedding: Embedding
     additional: Optional[Embedding]
+    data_dir: Path
     train_size: int
     val_size: int
     random_state: int
@@ -58,6 +59,9 @@ class Args:
 
         Raises a ValueError if you try to combine two embeddings of different type.
         """
+        assert self.data_dir.exists(), (
+            f"data directory {self.data_dir} does not exist"
+        )
         self.output_path = self.output_path / self.embedding.type()
         self.output_path.mkdir(parents=True, exist_ok=True)
         if self.additional:
@@ -74,6 +78,13 @@ class Args:
 def parse_args() -> Args:
     parser = ArgumentParser(
         description="Script that trains several models using the provided embeddings data as input and produces several results."
+    )
+    parser.add_argument(
+        "--data-dir",
+        "-d",
+        type=Path,
+        default=Path("data/public_data"),
+        help="Path to the data directory. Default: ./data/public_data",
     )
     parser.add_argument(
         "--embedding",
@@ -127,6 +138,7 @@ def parse_args() -> Args:
     return Args(
         embedding=args.embedding,
         additional=args.additional,
+        data_dir=args.data_dir,
         train_size=args.train_size,
         val_size=args.val_size,
         random_state=args.random_state,

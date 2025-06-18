@@ -47,6 +47,7 @@ class Args:
     text_additional: Optional[Embedding]
     audio_embedding: Embedding
     audio_additional: Optional[Embedding]
+    data_dir: Path
     methods: list[Method]
     train_size: int
     val_size: int
@@ -57,6 +58,9 @@ class Args:
         """
         Lowercases embedding names, creates a name for the project if none was given and creates output directory if needed.
         """
+        assert self.data_dir.exists(), (
+            f"data directory {self.data_dir} does not exist"
+        )
         assert self.text_embedding.type() == "text", (
             f"text embedding {self.text_embedding} must be a text embedding"
         )
@@ -123,6 +127,13 @@ def fuse_embeddings(
 def parse_args() -> Args:
     parser = ArgumentParser(
         description="Script that trains several models using the provided embeddings data as input and produces several results."
+    )
+    parser.add_argument(
+        "--data-dir",
+        "-d",
+        type=Path,
+        default=Path("data/public_data"),
+        help="Path to the data directory. Default: ./data/public_data",
     )
     parser.add_argument(
         "--text-embedding",
@@ -203,6 +214,7 @@ def parse_args() -> Args:
         text_additional=args.text_additional,
         audio_embedding=args.audio_embedding,
         audio_additional=args.audio_additional,
+        data_dir=args.data_dir,
         methods=args.methods,
         output_path=args.output,
         random_state=args.random_state,
@@ -213,7 +225,6 @@ def parse_args() -> Args:
 
 def main():
     args = parse_args()
-    data_path = Path.cwd() / "data/public_data"
     text_embeddings = (
         args.text_embedding + "+" + args.text_additional
         if args.text_additional
@@ -230,15 +241,15 @@ def main():
     )
     print(f"Random state = {args.random_state}")
     print(f"Directorio de salida: {args.output_path}")
-    train_df, test_df = load_dfs(data_path)
+    train_df, test_df = load_dfs(args.data_dir)
     train_idx, val_idx = get_splits_idx(
         train_df, args.train_size, args.val_size, args.random_state
     )
     X_train_text, X_val_text, X_test_text = load_embeddings(
-        data_path, train_idx, val_idx, args.text_embedding, args.text_additional
+        args.data_dir, train_idx, val_idx, args.text_embedding, args.text_additional
     )
     X_train_audio, X_val_audio, X_test_audio = load_embeddings(
-        data_path,
+        args.data_dir,
         train_idx,
         val_idx,
         args.audio_embedding,
