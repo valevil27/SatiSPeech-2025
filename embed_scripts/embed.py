@@ -101,11 +101,11 @@ def main():
             )
         case Embedding.MFCC:
             train_paths = [
-                a.output_dir / f"train_mfcc_{k}.npy"
+                a.output_dir / f"train_mfcc-{k}.npy"
                 for k in ["stats", "prosodic", "full"]
             ]
             test_paths = [
-                a.output_dir / f"test_mfcc_{k}.npy"
+                a.output_dir / f"test_mfcc-{k}.npy"
                 for k in ["stats", "prosodic", "full"]
             ]
             import trans_mfccs
@@ -133,8 +133,8 @@ def main():
                 csv_path=train_path,
                 audio_dir=a.data_dir / "segments_train",
                 id_column="id",
-                output_cls=a.output_dir / "train_hubert_cls.npy",
-                output_mean=a.output_dir / "train_hubert_mean.npy",
+                output_cls=a.output_dir / "train_hubert-cls.npy",
+                output_mean=a.output_dir / "train_hubert-mean.npy",
                 errors_path=a.logs_dir / "train_hubert.json",
                 split_name="Train",
             )
@@ -142,8 +142,8 @@ def main():
                 csv_path=test_path,
                 audio_dir=a.data_dir / "segments_test",
                 id_column="uid",
-                output_cls=a.output_dir / "test_hubert_cls.npy",
-                output_mean=a.output_dir / "test_hubert_mean.npy",
+                output_cls=a.output_dir / "test_hubert-cls.npy",
+                output_mean=a.output_dir / "test_hubert-mean.npy",
                 errors_path=a.logs_dir / "test_hubert.json",
                 split_name="Test",
             )
@@ -154,8 +154,8 @@ def main():
                 csv_path=train_path,
                 audio_dir=a.data_dir / "segments_train",
                 id_column="id",
-                output_cls=a.output_dir / "train_wav2vec2_cls.npy",
-                output_mean=a.output_dir / "train_wav2vec2_mean.npy",
+                output_cls=a.output_dir / "train_wav2vec2-cls.npy",
+                output_mean=a.output_dir / "train_wav2vec2-mean.npy",
                 errors_path=a.logs_dir / "train_wav2vec2.json",
                 split_name="Train",
             )
@@ -163,8 +163,8 @@ def main():
                 csv_path=test_path,
                 audio_dir=a.data_dir / "segments_test",
                 id_column="uid",
-                output_cls=a.output_dir / "test_wav2vec2_cls.npy",
-                output_mean=a.output_dir / "test_wav2vec2_mean.npy",
+                output_cls=a.output_dir / "test_wav2vec2-cls.npy",
+                output_mean=a.output_dir / "test_wav2vec2-mean.npy",
                 errors_path=a.logs_dir / "test_wav2vec2.json",
                 split_name="Test",
             )
