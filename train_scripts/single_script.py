@@ -10,7 +10,7 @@ from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 from fusion_utils import fusion_concat, load_embeddings_npy
 from classif_utils import get_classifiers, timeit
-from keras_utils import build_model, get_tuner, early_stop
+from keras_utils import build_model, get_tuner, get_early_stop
 
 results = {}
 predictions = {}
@@ -227,7 +227,7 @@ def train_keras(
         y_train,
         epochs=30,
         validation_split=0.2,
-        callbacks=[early_stop],
+        callbacks=[get_early_stop()],
     )
     best_hps = tuner.get_best_hyperparameters()[0]
     best_model = keras_builder(best_hps)
@@ -236,7 +236,7 @@ def train_keras(
         y_train,
         epochs=50,
         validation_split=0.2,
-        callbacks=[early_stop],
+        callbacks=[get_early_stop],
     )
     y_pred = best_model.predict(X_val)
     y_pred_classes = y_pred.argmax(axis=1)

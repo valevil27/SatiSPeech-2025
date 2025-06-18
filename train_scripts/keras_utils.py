@@ -1,10 +1,8 @@
 from typing import Callable
 import numpy as np
-from tensorflow import keras  # type: ignore
-from keras import layers, callbacks
-from keras import Sequential
 import keras_tuner as kt
 from keras_tuner import HyperParameters
+from keras import Sequential
 
 ModelBuilder = Callable[[HyperParameters], Sequential]
 
@@ -24,9 +22,10 @@ def build_model(X_train: np.ndarray, y_train: np.ndarray) -> ModelBuilder:
     Returns:
             ModelBuilder: A function that takes a HyperParameters object and returns a compiled Keras Sequential model.
     """
+    from keras import layers, optimizers
 
     def get_model(hp: HyperParameters) -> Sequential:
-        model: Sequential = keras.Sequential()
+        model: Sequential = Sequential()
         model.add(layers.Input(shape=(X_train.shape[1],)))
 
         # Número de capas ocultas y unidades
@@ -50,8 +49,8 @@ def build_model(X_train: np.ndarray, y_train: np.ndarray) -> ModelBuilder:
         model.add(layers.Dense(len(set(y_train)), activation="softmax"))
 
         model.compile(
-            optimizer=keras.optimizers.Adam(
-                hp.Float("learning_rate", 1e-4, 1e-2, sampling="log")
+            optimizer=optimizers.Adam(
+                hp.Float("learning_rate", 1e-4, 1e-2, sampling="log")  # type: ignore
             ),
             loss="sparse_categorical_crossentropy",
             metrics=["accuracy"],
@@ -85,8 +84,10 @@ def get_tuner(
         project_name=project_name,
     )
 
-early_stop = callbacks.EarlyStopping(
-    monitor="val_loss",
-    patience=5,
-    restore_best_weights=True
-)
+
+def get_early_stop():
+    from keras import callbacks
+
+    return callbacks.EarlyStopping(
+        monitor="val_loss", patience=5, restore_best_weights=True
+    )
