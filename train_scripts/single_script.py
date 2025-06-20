@@ -240,6 +240,7 @@ def train_keras(
         epochs=30,
         validation_split=0.2,
         callbacks=[get_early_stop()],
+        verbose=0,
     )
     best_hps = tuner.get_best_hyperparameters()[0]
     best_model = keras_builder(best_hps)
@@ -249,6 +250,7 @@ def train_keras(
         epochs=50,
         validation_split=0.2,
         callbacks=[get_early_stop()],
+        verbose=0, # type: ignore
     )
     y_pred = best_model.predict(X_val)
     y_pred_classes = y_pred.argmax(axis=1)
