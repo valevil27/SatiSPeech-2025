@@ -33,7 +33,7 @@ def get_classifiers(
         },
         "LogisticRegression": {
             "C": [0.01, 0.1, 1, 10],
-            "penalty": ["l2"],
+            "penalty": ["l1", "l2"],
             "solver": ["liblinear"],
             "max_iter": [100, 200],
         },

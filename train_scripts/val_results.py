@@ -1,6 +1,5 @@
 import argparse
 from dataclasses import dataclass, field
-from enum import StrEnum
 import numpy as np
 import json
 from pathlib import Path
@@ -19,6 +18,7 @@ from single_script import (
 )
 from combi_script import Method, fuse_embeddings
 from keras_utils import build_model, get_early_stop
+from train_scripts.single_script import Model
 
 
 IDX_PATH = Path(__file__).parent / "idx.txt"
@@ -35,13 +35,6 @@ def load_idx(path: Path) -> tuple[ndarray, ndarray]:
         val_idx = set(map(int, f.read().splitlines()))
     train_idx = set(range(6000)) - val_idx
     return np.array(list(train_idx)), np.array(list(val_idx))
-
-
-class Model(StrEnum):
-    DNN = "DNN"
-    LogisticRegression = "LogisticRegression"
-    SVM = "SVM"
-    RandomForest = "RandomForest"
 
 
 @dataclass
@@ -117,12 +110,12 @@ def parse_args() -> Args:
         help="Path to the data directory. Default: ./data/public_data",
     )
     parser.add_argument(
-        "--model",
-        "-m",
+        "--classifiers",
+        "-c",
         type=Model,
         required=True,
         choices=Model,
-        help="Model to use for classification.",
+        help="Classifier models to use for classification. Can select several models separated by spaces. By default, uses all models.",
     )
     parser.add_argument(
         "--input-json",

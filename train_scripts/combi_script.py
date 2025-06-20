@@ -15,6 +15,7 @@ from fusion_utils import (
     search_best_weighted_fusion,
 )
 from single_script import (
+    Model,
     get_labels,
     get_splits_idx,
     load_dfs,
@@ -53,6 +54,7 @@ class Args:
     val_size: int
     random_state: int
     output_path: Path
+    models: list[Model]
 
     def __post_init__(self):
         """
@@ -77,6 +79,8 @@ class Args:
             )
         if Method.ALL in self.methods:
             self.methods = Method.valid_methods()
+        if Model.ALL in self.models:
+            self.models = Model.valid_models()
         self.output_path.mkdir(parents=True, exist_ok=True)
         self.name = self.text_embedding.value
         if self.text_additional:
@@ -88,12 +92,12 @@ class Args:
 
 
 def fuse_embeddings(
-    X_train_text: ndarray,
     X_train_audio: ndarray,
-    X_val_text: ndarray,
+    X_train_text: ndarray,
     X_val_audio: ndarray,
-    X_test_text: ndarray,
+    X_val_text: ndarray,
     X_test_audio: ndarray,
+    X_test_text: ndarray,
     y_train: ndarray,
     y_val: ndarray,
     method: Method,
@@ -106,10 +110,10 @@ def fuse_embeddings(
             f = fusion_mean
         case Method.WEIGHTED:
             [w_a, w_b], _ = search_best_weighted_fusion(
-                X_train_text,
                 X_train_audio,
-                X_val_text,
+                X_train_text,
                 X_val_audio,
+                X_val_text,
                 y_train,
                 y_val,
             )
@@ -118,9 +122,9 @@ def fuse_embeddings(
             f = fusion_attention
         case _:
             raise ValueError("fusion method not valid")
-    X_train = f(X_train_text, X_train_audio)
-    X_val = f(X_val_text, X_val_audio)
-    X_test = f(X_test_text, X_test_audio)
+    X_train = f(X_train_audio, X_train_text)
+    X_val = f(X_val_audio, X_val_text)
+    X_test = f(X_test_audio, X_test_text)
     return X_train, X_val, X_test
 
 
@@ -171,10 +175,18 @@ def parse_args() -> Args:
         "--methods",
         "-m",
         type=Method,
-        nargs="*",
+        nargs="+",
         choices=Method,
         default=["concat"],
         help="Method used to fuse text and audio embeddings. Allowed one or more methods from concat, mean, weighted, attention and all. By default, uses concat",
+    )
+    parser.add_argument(
+        "--classifiers",
+        "-c",
+        nargs="+",
+        choices=Model,
+        default=[Model.ALL],
+        help="Classifier models to use for classification. Can select several models separated by spaces. By default, uses all models.",
     )
     parser.add_argument(
         "--train-size",
@@ -216,6 +228,7 @@ def parse_args() -> Args:
         audio_additional=args.audio_additional,
         data_dir=args.data_dir,
         methods=args.methods,
+        models=args.classifiers,
         output_path=args.output,
         random_state=args.random_state,
         train_size=args.train_size,
@@ -259,12 +272,12 @@ def main():
     for method in args.methods:
         print("##### Current fusion method:", method)
         X_train, X_val, X_test = fuse_embeddings(
-            X_train_text,
             X_train_audio,
-            X_val_text,
+            X_train_text,
             X_val_audio,
-            X_test_text,
+            X_val_text,
             X_test_audio,
+            X_test_text,
             y_train,
             y_val,
             method,
@@ -279,7 +292,7 @@ def main():
             args.random_state,
         )
         class_results, class_preds = train_classificators(
-            X_train, y_train, X_val, y_val, X_test, args.random_state
+            X_train, y_train, X_val, y_val, X_test, args.random_state, args.models  
         )
         save_results(
             test_df,

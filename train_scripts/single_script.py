@@ -1,3 +1,4 @@
+from __future__ import annotations
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from enum import StrEnum, auto
@@ -14,6 +15,18 @@ from keras_utils import build_model, get_tuner, get_early_stop
 
 results = {}
 predictions = {}
+
+
+class Model(StrEnum):
+    DNN = "DNN"
+    LogisticRegression = "LogisticRegression"
+    SVM = "SVM"
+    RandomForest = "RandomForest"
+    ALL = "all"
+
+    @staticmethod
+    def valid_models() -> list[Model]:
+        return [m for m in Model if m != Model.ALL]
 
 
 class Embedding(StrEnum):
@@ -51,6 +64,7 @@ class Args:
     val_size: int
     random_state: int
     output_path: Path
+    models: list[Model]
 
     def __post_init__(self):
         """
@@ -64,6 +78,8 @@ class Args:
         )
         self.output_path = self.output_path / self.embedding.type()
         self.output_path.mkdir(parents=True, exist_ok=True)
+        if Model.ALL in self.models:
+            self.models = Model.valid_models()
         if self.additional:
             if self.embedding.type() != self.additional.type():
                 raise ValueError(
@@ -103,6 +119,14 @@ def parse_args() -> Args:
         help="Name of the additional embedding to use along with the main one. The format is the same as for the main embedding. If not present, only the main embedding is used.",
     )
     parser.add_argument(
+        "--classifiers",
+        "-c",
+        nargs="+",
+        choices=Model,
+        default=[Model.ALL],
+        help="Classifier models to use for classification. Can select several models separated by spaces. By default, uses all models.",
+    )
+    parser.add_argument(
         "--train-size",
         "-t",
         type=int,
@@ -140,6 +164,7 @@ def parse_args() -> Args:
         additional=args.additional,
         data_dir=args.data_dir,
         train_size=args.train_size,
+        models = args.classifiers,
         val_size=args.val_size,
         random_state=args.random_state,
         output_path=args.output,
@@ -250,7 +275,7 @@ def train_keras(
         epochs=50,
         validation_split=0.2,
         callbacks=[get_early_stop()],
-        verbose=0, # type: ignore
+        verbose=0,  # type: ignore
     )
     y_pred = best_model.predict(X_val)
     y_pred_classes = y_pred.argmax(axis=1)
@@ -278,6 +303,7 @@ def train_classificators(
     y_val: ndarray,
     X_test: ndarray,
     random_state: int,
+    models: list[Model],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Finds hyperparameters for several classification models and trains the best model on the train and validation sets.
@@ -285,6 +311,8 @@ def train_classificators(
     """
     classifiers = get_classifiers(random_state)
     for name, model in classifiers.items():
+        if name not in models:
+            continue
         timed_training = timeit(name, results)(train_classificator)
         timed_training(X_train, y_train, X_val, y_val, X_test, name, model)
     return results, predictions
@@ -350,7 +378,7 @@ def main():
         X_train, y_train, X_val, y_val, X_test, args.name, args.random_state
     )
     class_results, class_preds = train_classificators(
-        X_train, y_train, X_val, y_val, X_test, args.random_state
+        X_train, y_train, X_val, y_val, X_test, args.random_state, args.models
     )
     save_results(
         test_df,
