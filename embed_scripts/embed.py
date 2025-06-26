@@ -15,6 +15,7 @@ class Embedding(StrEnum):
     MFCC = auto()
     HUBERT = auto()
     W2V2 = auto()
+    W2V2BERT = auto()
 
 
 @dataclass
@@ -48,7 +49,7 @@ def parse_args():
         data_dir=args.data_dir,
         logs_dir=args.logs_dir,
         output_dir=args.output_dir,
-        print_frequency=args.frequency,
+        print_frequency=args.print_state_frequency,
     )
 
 
@@ -166,6 +167,27 @@ def main():
                 output_cls=a.output_dir / "test_wav2vec2-cls.npy",
                 output_mean=a.output_dir / "test_wav2vec2-mean.npy",
                 errors_path=a.logs_dir / "test_wav2vec2.json",
+                split_name="Test",
+            )
+        case Embedding.W2V2BERT:
+            import trans_wav2vec2BERT
+
+            trans_wav2vec2BERT.process_embeddings(
+                csv_path=train_path,
+                audio_dir=a.data_dir / "segments_train",
+                id_column="id",
+                output_cls=a.output_dir / "train_wav2vec2bert-cls.npy",
+                output_mean=a.output_dir / "train_wav2vec2bert-mean.npy",
+                errors_path=a.logs_dir / "train_wav2vec2bert.json",
+                split_name="Train",
+            )
+            trans_wav2vec2BERT.process_embeddings(
+                csv_path=test_path,
+                audio_dir=a.data_dir / "segments_test",
+                id_column="uid",
+                output_cls=a.output_dir / "test_wav2vec2bert-cls.npy",
+                output_mean=a.output_dir / "test_wav2vec2bert-mean.npy",
+                errors_path=a.logs_dir / "test_wav2vec2bert.json",
                 split_name="Test",
             )
 
