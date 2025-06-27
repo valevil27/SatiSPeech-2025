@@ -40,6 +40,8 @@ class Embedding(StrEnum):
     HUBERT_MEAN = "hubert-mean"
     W2V2_CLS = "w2v2-cls"
     W2V2_MEAN = "w2v2-mean"
+    W2V2BERT_MEAN = "wav2vec2bert-mean"
+    W2V2BERT_CLS = "wav2vec2bert-cls"
 
     def type(self) -> str:
         if self in [
@@ -47,6 +49,8 @@ class Embedding(StrEnum):
             Embedding.HUBERT_MEAN,
             Embedding.W2V2_CLS,
             Embedding.W2V2_MEAN,
+            Embedding.W2V2BERT_MEAN,
+            Embedding.W2V2BERT_CLS,
             Embedding.MFCC_STATS,
             Embedding.MFCC_PROSODIC,
             Embedding.MFCC_FULL,
@@ -73,18 +77,14 @@ class Args:
 
         Raises a ValueError if you try to combine two embeddings of different type.
         """
-        assert self.data_dir.exists(), (
-            f"data directory {self.data_dir} does not exist"
-        )
+        assert self.data_dir.exists(), f"data directory {self.data_dir} does not exist"
         self.output_path = self.output_path / self.embedding.type()
         self.output_path.mkdir(parents=True, exist_ok=True)
         if Model.ALL in self.models:
             self.models = Model.valid_models()
         if self.additional:
             if self.embedding.type() != self.additional.type():
-                raise ValueError(
-                    "combining two kinds of embeddings is not supported"
-                )
+                raise ValueError("combining two kinds of embeddings is not supported")
         self.name = self.embedding.value
         if self.additional:
             self.name += "_" + self.additional.value
@@ -164,7 +164,7 @@ def parse_args() -> Args:
         additional=args.additional,
         data_dir=args.data_dir,
         train_size=args.train_size,
-        models = args.classifiers,
+        models=args.classifiers,
         val_size=args.val_size,
         random_state=args.random_state,
         output_path=args.output,
@@ -200,14 +200,8 @@ def get_labels(
     train_df: pd.DataFrame, train_idx: ndarray, val_idx: ndarray
 ) -> tuple[ndarray, ndarray]:
     """Gets the train and validation labels from the train dataframe given the train and validation indices."""
-    y_train = (
-        train_df.loc[train_idx, "label"]
-        .map({"satire": 1, "no-satire": 0})
-        .values
-    )
-    y_val = (
-        train_df.loc[val_idx, "label"].map({"satire": 1, "no-satire": 0}).values
-    )
+    y_train = train_df.loc[train_idx, "label"].map({"satire": 1, "no-satire": 0}).values
+    y_val = train_df.loc[val_idx, "label"].map({"satire": 1, "no-satire": 0}).values
     return y_train, y_val  # type: ignore
 
 
@@ -216,7 +210,7 @@ def load_embeddings(
     train_idx: ndarray,
     val_idx: ndarray,
     embedding: Embedding,
-    additional: Optional[Embedding],
+    additional: Optional[Embedding] = None,
 ) -> tuple[ndarray, ndarray, ndarray]:
     """Loads the train, validation and test embeddings from the data directory."""
     test_path = data_dir / f"embeddings/test_{embedding.value}.npy"
@@ -281,14 +275,10 @@ def train_keras(
     y_pred_classes = y_pred.argmax(axis=1)
     y_test = best_model.predict(X_test)
     y_test_classes = y_test.argmax(axis=1)
-    report = classification_report(
-        y_val, y_pred_classes, digits=4, output_dict=True
-    )
+    report = classification_report(y_val, y_pred_classes, digits=4, output_dict=True)
     assert isinstance(report, dict)
     results["DNN"] = report
-    results["DNN"]["Hyperparameters"] = tuner.get_best_hyperparameters()[
-        0
-    ].values
+    results["DNN"]["Hyperparameters"] = tuner.get_best_hyperparameters()[0].values
     print(
         "#### Report for DNN:\n####",
         results,

@@ -44,10 +44,8 @@ class Method(StrEnum):
 
 @dataclass
 class Args:
-    text_embedding: Embedding
-    text_additional: Optional[Embedding]
-    audio_embedding: Embedding
-    audio_additional: Optional[Embedding]
+    text_embeddings: list[Embedding]
+    audio_embeddings: list[Embedding]
     data_dir: Path
     methods: list[Method]
     train_size: int
@@ -58,36 +56,16 @@ class Args:
 
     def __post_init__(self):
         """
-        Lowercases embedding names, creates a name for the project if none was given and creates output directory if needed.
+        Lowercases embedding names, creates a name for the project and creates output directory if needed.
         """
-        assert self.data_dir.exists(), (
-            f"data directory {self.data_dir} does not exist"
-        )
-        assert self.text_embedding.type() == "text", (
-            f"text embedding {self.text_embedding} must be a text embedding"
-        )
-        if self.text_additional:
-            assert self.text_additional.type() == "text", (
-                f"text embedding {self.text_additional} must be a text embedding"
-            )
-        assert self.audio_embedding.type() == "audio", (
-            f"audio embedding {self.audio_embedding} must be an audio embedding"
-        )
-        if self.audio_additional:
-            assert self.audio_additional.type() == "audio", (
-                f"audio embedding {self.audio_additional} must be an audio embedding"
-            )
+        assert self.data_dir.exists(), f"data directory {self.data_dir} does not exist"
         if Method.ALL in self.methods:
             self.methods = Method.valid_methods()
         if Model.ALL in self.models:
             self.models = Model.valid_models()
         self.output_path.mkdir(parents=True, exist_ok=True)
-        self.name = self.text_embedding.value
-        if self.text_additional:
-            self.name += "_" + self.text_additional.value
-        self.name += "+" + self.audio_embedding.value
-        if self.audio_additional:
-            self.name += "_" + self.audio_additional.value
+        self.name = f"{'_'.join(t.value for t in self.text_embeddings)}+"
+        self.name += f"{'_'.join(a.value for a in self.audio_embeddings)}"
         self.output_path = self.output_path / f"{self.name}"
 
 
@@ -140,36 +118,22 @@ def parse_args() -> Args:
         help="Path to the data directory. Default: ./data/public_data",
     )
     parser.add_argument(
-        "--text-embedding",
+        "--text-embeddings",
         "-te",
         type=Embedding,
+        nargs="+",
         choices=[e for e in Embedding if e.type() == "text"],
         required=True,
         help='Name of the embedding to use. The embedding must be previously created in the "embeddings" folder, in ".npy" format for both the test and train sets, along with the data CSV files. The name format should be "test_<embedding>.npy."',
     )
     parser.add_argument(
-        "--text-additional",
-        "-ta",
-        type=Embedding,
-        choices=[e for e in Embedding if e.type() == "text"],
-        required=False,
-        help="Name of the additional embedding to use along with the main one. The format is the same as for the main embedding. If not present, only the main embedding is used.",
-    )
-    parser.add_argument(
-        "--audio-embedding",
+        "--audio-embeddings",
         "-ae",
         type=Embedding,
+        nargs="+",
         choices=[e for e in Embedding if e.type() == "audio"],
         required=True,
         help='Name of the embedding to use. The embedding must be previously created in the "embeddings" folder, in ".npy" format for both the test and train sets, along with the data CSV files. The name format should be "test_<embedding>.npy."',
-    )
-    parser.add_argument(
-        "--audio-additional",
-        "-aa",
-        type=Embedding,
-        choices=[e for e in Embedding if e.type() == "audio"],
-        required=False,
-        help="Name of the additional embedding to use along with the main one. The format is the same as for the main embedding. If not present, only the main embedding is used.",
     )
     parser.add_argument(
         "--methods",
@@ -222,10 +186,8 @@ def parse_args() -> Args:
     )
     args = parser.parse_args()
     return Args(
-        text_embedding=args.text_embedding,
-        text_additional=args.text_additional,
-        audio_embedding=args.audio_embedding,
-        audio_additional=args.audio_additional,
+        text_embeddings=args.text_embeddings,
+        audio_embeddings=args.audio_embeddings,
         data_dir=args.data_dir,
         methods=args.methods,
         models=args.classifiers,
@@ -238,20 +200,8 @@ def parse_args() -> Args:
 
 def main():
     args = parse_args()
-    text_embeddings = (
-        args.text_embedding + "+" + args.text_additional
-        if args.text_additional
-        else args.text_embedding
-    )
-    audio_embeddings = (
-        args.audio_embedding + "+" + args.audio_additional
-        if args.audio_additional
-        else args.audio_embedding
-    )
-    print(f"Experiment {args.name}.")
-    print(
-        f"Using embeddings {text_embeddings} with {audio_embeddings} using fusion method {', '.join([m.value for m in args.methods])}."
-    )
+    text_embeddings = "+".join(t.value for t in args.text_embeddings)
+    audio_embeddings = "+".join(a.value for a in args.audio_embeddings)
     print(f"Random state = {args.random_state}")
     print(f"Directorio de salida: {args.output_path}")
     train_df, test_df = load_dfs(args.data_dir)
@@ -259,18 +209,22 @@ def main():
         train_df, args.train_size, args.val_size, args.random_state
     )
     X_train_text, X_val_text, X_test_text = load_embeddings(
-        args.data_dir, train_idx, val_idx, args.text_embedding, args.text_additional
+        args.data_dir,
+        train_idx,
+        val_idx,
+        args.text_embeddings[0],
+        args.text_embeddings[1] if len(args.text_embeddings) > 1 else None,
     )
     X_train_audio, X_val_audio, X_test_audio = load_embeddings(
         args.data_dir,
         train_idx,
         val_idx,
-        args.audio_embedding,
-        args.audio_additional,
+        args.audio_embeddings[0],
+        args.audio_embeddings[1] if len(args.audio_embeddings) > 1 else None,
     )
     y_train, y_val = get_labels(train_df, train_idx, val_idx)
     for method in args.methods:
-        print("##### Current fusion method:", method)
+        print(f"Training {text_embeddings} with {audio_embeddings} using {method}.")
         X_train, X_val, X_test = fuse_embeddings(
             X_train_audio,
             X_train_text,
@@ -282,25 +236,25 @@ def main():
             y_val,
             method,
         )
-        keras_results, keras_preds = train_keras(
-            X_train,
-            y_train,
-            X_val,
-            y_val,
-            X_test,
-            f"{args.name}_{method.value}",
-            args.random_state,
-        )
+        keras_results, keras_preds = dict(), dict()
+        if Model.DNN in args.models:
+            keras_results, keras_preds = train_keras(
+                X_train,
+                y_train,
+                X_val,
+                y_val,
+                X_test,
+                f"{args.name}_{method.value}",
+                args.random_state,
+            )
         class_results, class_preds = train_classificators(
-            X_train, y_train, X_val, y_val, X_test, args.random_state, args.models  
+            X_train, y_train, X_val, y_val, X_test, args.random_state, args.models
         )
         save_results(
             test_df,
             keras_results | class_results,
             keras_preds | class_preds,
-            args.output_path.with_name(
-                args.output_path.name + "+" + method.value
-            ),
+            args.output_path.with_name(args.output_path.name + "+" + method.value),
         )
 
 

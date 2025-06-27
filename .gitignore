@@ -8,6 +8,7 @@ docs
 *.json
 *.zip
 *.npy
+*.tex
 *.pyo
 *.log
 *.csv
@@ -35,4 +36,4 @@ SatiSPeech2025Baseline.ipynb
 SatiSPeech2025Submission.ipynb
 train_scripts/idx.txt
 analisis.md
-train_audio.sh
+train_*.sh
