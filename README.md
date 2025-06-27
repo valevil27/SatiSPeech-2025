@@ -49,3 +49,12 @@ Word2Vec (conversion to `.npy` vectors was needed due to the limitation of the s
 
 - `word2vec_vectors.npy`: Word2Vec vectors file.
 - `word2vec_vocab.npy`: Word2Vec vocabulary file.
+
+## Notes
+
+The present attention mechanism is a placeholder made so it doesn't break the program if used.
+It uses a simple attention mechanism that assigns random weights to all tokens and doesn't train
+them in the training the process.
+
+The attention mechanism used in the project is still to be ported from the original notebook
+implementation to the scripts presented in this repository.
