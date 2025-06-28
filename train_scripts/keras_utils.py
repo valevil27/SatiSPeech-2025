@@ -1,8 +1,9 @@
 from typing import Callable
 import numpy as np
 import keras_tuner as kt
+import keras
 from keras_tuner import HyperParameters
-from keras import Sequential
+from keras import Sequential, Model
 
 ModelBuilder = Callable[[HyperParameters], Sequential]
 
@@ -32,9 +33,7 @@ def build_model(X_train: np.ndarray, y_train: np.ndarray) -> ModelBuilder:
         for i in range(hp.Int("num_layers", 1, 3)):  # type: ignore
             model.add(
                 layers.Dense(
-                    units=hp.Int(
-                        f"units_{i}", min_value=32, max_value=256, step=32
-                    ),
+                    units=hp.Int(f"units_{i}", min_value=32, max_value=256, step=32),
                     activation=hp.Choice("activation", ["relu", "tanh"]),
                 )
             )
@@ -91,3 +90,71 @@ def get_early_stop():
     return callbacks.EarlyStopping(
         monitor="val_loss", patience=5, restore_best_weights=True
     )
+
+
+def build_attention_model(
+    text_dim: int, audio_dim: int, y_train: np.ndarray
+) -> ModelBuilder:
+    """Returns a model builder that applies cross attention between text and
+    audio embeddings.
+
+    The returned callable builds a Keras model that projects both embeddings to
+    the same dimension, applies ``MultiHeadAttention`` and concatenates the
+    attention output with the text projection before the classification layers.
+    ``keras_tuner`` will explore the dimension size, number of heads and other
+    dense layer parameters.
+    """
+
+    from keras import layers, models, optimizers
+
+    def get_model(hp: HyperParameters):
+        nclasses = 2
+        d_model = hp.Choice("d_model", [64, 128, 256])
+        num_heads = 4
+        assert isinstance(d_model, int)
+        key_dim = d_model // num_heads
+
+        text_in = layers.Input(shape=(text_dim,), name="text_input")
+        audio_in = layers.Input(shape=(audio_dim,), name="audio_input")
+        text_proj = layers.Dense(d_model)(text_in)
+        audio_proj = layers.Dense(d_model)(audio_in)
+
+        query = layers.Reshape((1, d_model))(text_proj)
+        value = layers.Reshape((1, d_model))(audio_proj)
+        attn = layers.MultiHeadAttention(num_heads=num_heads, key_dim=key_dim)(
+            query=query, value=value, key=value
+        )
+        attn = layers.Reshape((d_model,))(attn)
+        fused = layers.Concatenate()([text_proj, attn])
+
+        x = layers.Dense(
+            hp.Choice("units", [64, 128, 256]),
+            activation=hp.Choice("activation", ["relu", "tanh"]),
+        )(fused)
+        x = layers.Dropout(
+            hp.Float("dropout", 0.1, 0.5, step=0.1), name="fusion_output"
+        )(x)
+        out = layers.Dense(nclasses, activation="softmax")(x)
+
+        model = models.Model(inputs=[text_in, audio_in], outputs=out)
+        learning_rate = hp.Float("learning_rate", 1e-4, 1e-2, sampling="log")
+        assert isinstance(learning_rate, float)
+        model.compile(
+            optimizer=optimizers.Adam(learning_rate),  # type: ignore
+            loss="sparse_categorical_crossentropy",
+            metrics=["accuracy"],
+        )
+        return model
+
+    return get_model
+
+
+def get_attention_embeddings(
+    model: keras.Sequential,
+    text: np.ndarray,
+    audio: np.ndarray,
+) -> np.ndarray:
+    emb_model = Model(
+        inputs=model.inputs, outputs=model.get_layer("fusion_output").output
+    )
+    return emb_model.predict([text, audio], verbose=0)  # type: ignore

@@ -1,12 +1,20 @@
 from __future__ import annotations
+import keras
+import numpy as np
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from functools import partial
 from pathlib import Path
-from typing import Callable, Optional
-
+from typing import Callable, Any
+from sklearn.metrics import classification_report
 from numpy import ndarray
+from keras_utils import (
+    build_attention_model,
+    get_early_stop,
+    get_tuner,
+    get_attention_embeddings,
+)
 from fusion_utils import (
     fusion_attention,
     fusion_concat,
@@ -25,6 +33,7 @@ from single_script import (
     train_keras,
     Embedding,
 )
+from classif_utils import timeit
 
 results = {}
 predictions = {}
@@ -104,6 +113,86 @@ def fuse_embeddings(
     X_val = f(X_val_audio, X_val_text)
     X_test = f(X_test_audio, X_test_text)
     return X_train, X_val, X_test
+
+
+@timeit("ATTENTION_DNN", results)
+def train_attention(
+    X_train_text: np.ndarray,
+    X_train_audio: np.ndarray,
+    X_val_text: np.ndarray,
+    X_val_audio: np.ndarray,
+    X_test_text: np.ndarray,
+    X_test_audio: np.ndarray,
+    y_train: np.ndarray,
+    y_val: np.ndarray,
+    name: str,
+    random_state: int,
+) -> tuple[dict[str, Any], dict[str, Any], keras.Model]:
+    """Tunes and trains an attention-based model"""
+    print("\nTuning attention-based model...")
+    builder = build_attention_model(
+        X_train_text.shape[1],
+        X_train_audio.shape[1],
+        y_train.shape[0],
+    )
+    tuner = get_tuner(builder, name, random_state)
+    tuner.search(
+        [X_train_text, X_train_audio],
+        y_train,
+        epochs=30,
+        validation_split=0.2,
+        callbacks=[get_early_stop()],
+        verbose=1,
+    )
+    best_hps = tuner.get_best_hyperparameters()[0]
+    best_model = builder(best_hps)
+    best_model.fit(
+        [X_train_text, X_train_audio],
+        y_train,
+        epochs=50,
+        validation_split=0.2,
+        callbacks=[get_early_stop()],
+        verbose=0,  # type: ignore
+    )
+    y_pred = best_model.predict([X_val_text, X_val_audio])
+    y_pred_classes = y_pred.argmax(axis=1)
+    y_test = best_model.predict([X_test_text, X_test_audio])
+    y_test_classes = y_test.argmax(axis=1)
+    report = classification_report(y_val, y_pred_classes, output_dict=True)
+    assert isinstance(report, dict)
+    results["ATTENTION_DNN"] = report
+    results["ATTENTION_DNN"]["Hyperparameters"] = best_hps.values
+    predictions["ATTENTION_DNN"] = y_test_classes
+    print("#### Report for Attention DNN:\n", report)
+    return results, predictions, best_model
+
+
+def train_attention_class(
+    X_train_text: np.ndarray,
+    X_train_audio: np.ndarray,
+    X_val_text: np.ndarray,
+    X_val_audio: np.ndarray,
+    X_test_text: np.ndarray,
+    X_test_audio: np.ndarray,
+    y_train: np.ndarray,
+    y_val: np.ndarray,
+    models: list[Model],
+    random_state: int,
+    att_model: keras.Sequential,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    emb_train = get_attention_embeddings(att_model, X_train_text, X_train_audio)
+    emb_val = get_attention_embeddings(att_model, X_val_text, X_val_audio)
+    emb_test = get_attention_embeddings(att_model, X_test_text, X_test_audio)
+    class_results, class_predictions = train_classificators(
+        emb_train,
+        y_train,
+        emb_val,
+        y_val,
+        emb_test,
+        random_state,
+        models,
+    )
+    return class_results, class_predictions
 
 
 def parse_args() -> Args:
@@ -225,31 +314,61 @@ def main():
     y_train, y_val = get_labels(train_df, train_idx, val_idx)
     for method in args.methods:
         print(f"Training {text_embeddings} with {audio_embeddings} using {method}.")
-        X_train, X_val, X_test = fuse_embeddings(
-            X_train_audio,
-            X_train_text,
-            X_val_audio,
-            X_val_text,
-            X_test_audio,
-            X_test_text,
-            y_train,
-            y_val,
-            method,
-        )
-        keras_results, keras_preds = dict(), dict()
-        if Model.DNN in args.models:
-            keras_results, keras_preds = train_keras(
-                X_train,
+        if method == Method.ATTENTION:
+            assert Model.DNN in args.models, (
+                "DNN model is required for attention-based training"
+            )
+            keras_results, keras_preds, model = train_attention(
+                X_train_text,
+                X_train_audio,
+                X_val_text,
+                X_val_audio,
+                X_test_text,
+                X_test_audio,
                 y_train,
-                X_val,
                 y_val,
-                X_test,
                 f"{args.name}_{method.value}",
                 args.random_state,
             )
-        class_results, class_preds = train_classificators(
-            X_train, y_train, X_val, y_val, X_test, args.random_state, args.models
-        )
+            class_results, class_preds = train_attention_class(
+                X_train_text,
+                X_train_audio,
+                X_val_text,
+                X_val_audio,
+                X_test_text,
+                X_test_audio,
+                y_train,
+                y_val,
+                args.models,
+                args.random_state,
+                model,
+            )
+        else:
+            X_train, X_val, X_test = fuse_embeddings(
+                X_train_audio,
+                X_train_text,
+                X_val_audio,
+                X_val_text,
+                X_test_audio,
+                X_test_text,
+                y_train,
+                y_val,
+                method,
+            )
+            keras_results, keras_preds = dict(), dict()
+            if Model.DNN in args.models:
+                keras_results, keras_preds = train_keras(
+                    X_train,
+                    y_train,
+                    X_val,
+                    y_val,
+                    X_test,
+                    f"{args.name}_{method.value}",
+                    args.random_state,
+                )
+            class_results, class_preds = train_classificators(
+                X_train, y_train, X_val, y_val, X_test, args.random_state, args.models
+            )
         save_results(
             test_df,
             keras_results | class_results,

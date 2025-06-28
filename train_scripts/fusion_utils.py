@@ -42,9 +42,7 @@ def fusion_concat(embedding_a: ndarray, embedding_b: ndarray) -> ndarray:
     return np.concatenate([embedding_a, embedding_b], axis=1)
 
 
-def normalize(
-    embedding_a: ndarray, embedding_b: ndarray
-) -> tuple[ndarray, ndarray]:
+def normalize(embedding_a: ndarray, embedding_b: ndarray) -> tuple[ndarray, ndarray]:
     """
     Given two embeddings, normalizes them to the same size, making them able to be fused with
     several fusion methods that require them to be of the same size.
@@ -91,21 +89,15 @@ def fusion_attention(
     embedding_a, embedding_b = normalize(embedding_a, embedding_b)
     d_model = embedding_a.shape[1]
     key_dim = d_model // num_heads
-
     mha_layer = MultiHeadAttention(num_heads=num_heads, key_dim=key_dim)
-
     tensor_a = tf.convert_to_tensor(embedding_a, dtype=tf.float32)
     tensor_b = tf.convert_to_tensor(embedding_b, dtype=tf.float32)
-
     tensor_a = tf.expand_dims(tensor_a, axis=1)
     tensor_b = tf.expand_dims(tensor_b, axis=1)
-
     att_output = mha_layer(query=tensor_a, value=tensor_b, key=tensor_b)
     att_output = tf.squeeze(att_output, axis=1).numpy()
-
     scaler = StandardScaler()
     att_output = scaler.fit_transform(att_output)
-
     return att_output
 
 
@@ -132,9 +124,7 @@ def search_best_weighted_fusion(
         X_train_fusion = fusion_weighted(
             X_train_a, X_train_b, weight_a=w_a, weight_b=w_b
         )
-        X_val_fusion = fusion_weighted(
-            X_val_a, X_val_b, weight_a=w_a, weight_b=w_b
-        )
+        X_val_fusion = fusion_weighted(X_val_a, X_val_b, weight_a=w_a, weight_b=w_b)
 
         model.fit(X_train_fusion, y_train)
         score: float = float(model.score(X_val_fusion, y_val))
