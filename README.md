@@ -52,9 +52,18 @@ Word2Vec (conversion to `.npy` vectors was needed due to the limitation of the s
 
 ## Notes
 
-The present attention mechanism is a placeholder made so it doesn't break the program if used.
-It uses a simple attention mechanism that assigns random weights to all tokens and doesn't train
-them in the training the process.
+The attention mechanism used in the project is trained using a custom implementation, where its
+weights are learned during the training process using a small keras neural network.
 
-The attention mechanism used in the project is still to be ported from the original notebook
-implementation to the scripts presented in this repository.
+Once the model is trained, we extract the output from one of the layers of the model and use it as the
+embedding generated using the attention mechanism, which are then fed into the models selected for training.
+
+This approach allows for fast and efficient embedding generation, as it avoids the need for additional training steps
+that would be required if we trained the attention mechanism individually for each model.
+
+~~The present attention mechanism is a placeholder made so it doesn't break the program if used.
+It uses a simple attention mechanism that assigns random weights to all tokens and doesn't train
+them in the training the process.~~
+
+~~The attention mechanism used in the project is still to be ported from the original notebook
+implementation to the scripts presented in this repository.~~
